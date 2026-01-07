@@ -4,6 +4,7 @@ import { createStore } from "solid-js/store"
 import type { Step, StepDetail } from "./types";
 import { DialogContainer, dialogService } from "./dialog";
 import { Confirm, Prompt } from "./confirm";
+import { Spinner } from "./spinner";
 
 
 
@@ -31,7 +32,7 @@ function App(props: { steps: StepDetail[], activeStepIndex?: number | null }) {
                     <Show when={props.activeStepIndex !== null && props.steps[props.activeStepIndex ?? -1]} fallback={<text>No active step.</text>}>
                         <For each={props.steps[props.activeStepIndex ?? -1]?.log} fallback={<text>No steps defined.</text>}>
                             {(log) => (
-                                <text>{log}</text>
+                                log.type === 'text' ? <text>{log.content}</text> : log.render()
                             )}
                         </For>
                     </Show>
@@ -61,7 +62,7 @@ export function createWorkflow() {
             try {
                 await step.action({ 
                     log: (message: string) => {
-                        setSteps(index, 'log', (logs) => [...logs, message]);
+                        setSteps(index, 'log', (logs) => [...logs, { type: 'text' as const, content: message }]);
                     },
                     prompt: async (message: string) => {
                         const result = await dialogService.add<string>((resolve, reject) => (
@@ -76,16 +77,29 @@ export function createWorkflow() {
                         return result;
                     },
                     spinner: () => {
-                        function start(msg: string){}
-                        function message(msg: string){}
-                        function stop(msg: string){}
+                        const [messageText, setMessageText] = createSignal<string>('');
+                        const [complete, setCompleted] = createSignal<boolean>(false);
+                        function start(msg: string){
+                            setMessageText(msg);
+                            setSteps(index, 'log', (logs) => [...logs, { type: 'component' as const, render: () => 
+                                <Spinner message={messageText()} complete={complete()} /> 
+                            }]);
+                        }
+                        function message(msg: string){
+                            setMessageText(msg);
+                        }
+                        function stop(msg: string){
+                            setMessageText(msg);
+                            setCompleted(true);
+                        }
+
                         return {
                             start,
                             message,
                             stop
                         }
                     },
-                    progress: async () => {},
+                    // progress: async () => {},
                     exit: () => process.exit(0),
                 });
                 setSteps(index, 'status', 'completed');
