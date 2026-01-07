@@ -1,5 +1,6 @@
 import { render, useKeyboard, useRenderer } from "@opentui/solid"
 import { createSignal, onMount, onCleanup, For, Show } from "solid-js"
+import { createStore } from "solid-js/store"
 
 interface Step {
     title: string;
@@ -22,7 +23,7 @@ function App(props: { steps: StepDetail[], activeStepIndex?: number | null }) {
     });
 
     return (
-        <box flexDirection="row" padding={1} gap={1} height="100%">
+        <box flexDirection="row" padding={1} gap={1} height="100%" width="100%">
             <box border={true} borderStyle="rounded">
                 <For each={props.steps} fallback={<text>No steps defined.</text>}>
                     {(step, index) => (
@@ -46,33 +47,37 @@ function App(props: { steps: StepDetail[], activeStepIndex?: number | null }) {
 }
 
 export function createWorkflow() {
-    const [steps, setSteps] = createSignal<StepDetail[]>([]);
+    const [steps, setSteps] = createStore<StepDetail[]>([]);
     const [activeStepIndex, setActiveStepIndex] = createSignal<number | null>(null);
     
     function addStep(step: Step) {
-        setSteps(s => [...s, { ...step, status: 'pending', log: [] }]);
+        setSteps(steps.length, { ...step, status: 'pending', log: [] });
     }
     
     async function startWorkflow() {
-        const stepsList = steps();
-        for (const [index, step] of stepsList.entries()) {
+        for (let index = 0; index < steps.length; index++) {
+            const step = steps[index];
+            if (!step) continue;
+            
             setActiveStepIndex(index);
-            step.status = 'in-progress';
-            try{
+            setSteps(index, 'status', 'in-progress');
+            
+            try {
                 await step.action({ 
                     log: (message: string) => {
-                        step.log.push(message);
+                        setSteps(index, 'log', (logs) => [...logs, message]);
                     },
                 });
-            }catch (e){
-                step.status = 'failed';
-                step.error = (e instanceof Error ? e.message : String(e));
+                setSteps(index, 'status', 'completed');
+            } catch (e) {
+                setSteps(index, 'status', 'failed');
+                setSteps(index, 'error', (e instanceof Error ? e.message : String(e)));
             }
         }
         setActiveStepIndex(null);
     }
 
-    render(() => <App steps={steps()} activeStepIndex={activeStepIndex()}/>, {
+    render(() => <App steps={steps} activeStepIndex={activeStepIndex()}/>, {
         targetFps: 60,
         gatherStats: false,
         exitOnCtrlC: true,
