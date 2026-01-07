@@ -6,7 +6,7 @@
   "scripts": {
     "build": "bun run build.ts",
     "start": "bun run dist/index.js",
-    "dev": "bun run --conditions=browser index.tsx"
+    "dev": "bun run --conditions=browser index.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
