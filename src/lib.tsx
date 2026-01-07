@@ -1,18 +1,11 @@
 import { render, useKeyboard, useRenderer } from "@opentui/solid"
 import { createSignal, onMount, onCleanup, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
+import type { Step, StepDetail } from "./types";
+import { DialogContainer, dialogService } from "./dialog";
+import { Confirm, Prompt } from "./confirm";
 
-interface Step {
-    title: string;
-    key: string;
-    action: (args: { log: (message: string) => void }) => Promise<void>;
-}
 
-interface StepDetail extends Step {
-    status: 'pending' | 'in-progress' | 'completed' | 'failed';
-    error?: string;
-    log: string[];
-}
 
 function App(props: { steps: StepDetail[], activeStepIndex?: number | null }) {
     const renderer = useRenderer();
@@ -23,25 +16,28 @@ function App(props: { steps: StepDetail[], activeStepIndex?: number | null }) {
     });
 
     return (
-        <box flexDirection="row" padding={1} gap={1} height="100%" width="100%">
-            <box border={true} borderStyle="rounded">
-                <For each={props.steps} fallback={<text>No steps defined.</text>}>
-                    {(step, index) => (
-                        <box backgroundColor={props.activeStepIndex === index() ? "blue" : undefined}>
-                            <text>{step.title}</text>
-                        </box>
-                    )}
-                </For>
-            </box>
-            <box border={true} borderStyle="rounded" flexGrow={1} padding={1}>
-                <Show when={props.activeStepIndex !== null && props.steps[props.activeStepIndex ?? -1]} fallback={<text>No active step.</text>}>
-                    <For each={props.steps[props.activeStepIndex ?? -1]?.log} fallback={<text>No steps defined.</text>}>
-                        {(log) => (
-                            <text>{log}</text>
+        <box flexDirection="column" height="100%" width="100%">
+            <box flexDirection="row" gap={1} flexGrow={1}>
+                <box border={true} borderStyle="rounded">
+                    <For each={props.steps} fallback={<text>No steps defined.</text>}>
+                        {(step, index) => (
+                            <box backgroundColor={props.activeStepIndex === index() ? "blue" : undefined}>
+                                <text>{step.title}</text>
+                            </box>
                         )}
                     </For>
-                </Show>
+                </box>
+                <box border={true} borderStyle="rounded" flexGrow={1}>
+                    <Show when={props.activeStepIndex !== null && props.steps[props.activeStepIndex ?? -1]} fallback={<text>No active step.</text>}>
+                        <For each={props.steps[props.activeStepIndex ?? -1]?.log} fallback={<text>No steps defined.</text>}>
+                            {(log) => (
+                                <text>{log}</text>
+                            )}
+                        </For>
+                    </Show>
+                </box>
             </box>
+            <DialogContainer />
         </box>
     )
 }
@@ -67,6 +63,30 @@ export function createWorkflow() {
                     log: (message: string) => {
                         setSteps(index, 'log', (logs) => [...logs, message]);
                     },
+                    prompt: async (message: string) => {
+                        const result = await dialogService.add<string>((resolve, reject) => (
+                            <Prompt message={message} resolve={resolve} reject={reject} />
+                        ));
+                        return result;
+                    },
+                    confirm: async (message: string) => {
+                        const result = await dialogService.add<boolean>((resolve, reject) => (
+                            <Confirm message={message} resolve={resolve} reject={reject} />
+                        ));
+                        return result;
+                    },
+                    spinner: () => {
+                        function start(msg: string){}
+                        function message(msg: string){}
+                        function stop(msg: string){}
+                        return {
+                            start,
+                            message,
+                            stop
+                        }
+                    },
+                    progress: async () => {},
+                    exit: () => process.exit(0),
                 });
                 setSteps(index, 'status', 'completed');
             } catch (e) {

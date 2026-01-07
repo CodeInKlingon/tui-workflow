@@ -5,12 +5,17 @@ const workflow = createWorkflow();
 workflow.addStep({
     title: "Step 1: Initialize",
     key: "step1",
-    action: async ({ log }) => {
+    action: async ({ log, confirm, exit, prompt }) => {
         // Simulate some async work
         log("Initializing...");
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const value = await prompt("Please enter a value:");
+        log(`User entered: ${value}`);
+        const shouldContinue = await confirm("Do you want to continue to the next step?");
+        if(!shouldContinue) exit();
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         log("Initialization complete.");
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 });
 
