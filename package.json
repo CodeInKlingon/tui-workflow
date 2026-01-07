@@ -1,0 +1,22 @@
+{
+  "name": "my-tui-app",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "bun run build.ts",
+    "start": "bun run dist/index.js",
+    "dev": "bun run --conditions=browser index.tsx"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.1.69",
+    "@opentui/solid": "^0.1.69",
+    "solid-js": "^1.9"
+  }
+}
