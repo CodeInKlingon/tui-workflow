@@ -22,7 +22,16 @@ workflow.addStep({
         if(!shouldContinue) exit();
         await new Promise((resolve) => setTimeout(resolve, 1000));
         log("Initialization complete.");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        log("Initialization complete.");
+        log("Initialization complete.");
+        log("Initialization complete.");
+        log("Initialization complete.");
+        log("Initialization complete.");
+        log("Initialization complete.");
+        log("Initialization complete.");
+        log("Initialization complete.");
+        log("Initialization complete.");
+        await new Promise((resolve) => setTimeout(resolve, 10000));
     }
 });
 

@@ -1,34 +1,38 @@
 import { render, useKeyboard, useRenderer } from "@opentui/solid"
-import { createSignal, onMount, onCleanup, For, Show } from "solid-js"
+import { createSignal, onMount, onCleanup, For, Show, createResource, useContext } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { Step, StepDetail } from "./types";
 import { DialogContainer, dialogService } from "./dialog";
 import { Confirm, Prompt } from "./confirm";
 import { Spinner } from "./spinner";
-
-
+import { useTerminalColors, TerminalColorProvider } from "./theme";
 
 function App(props: { steps: StepDetail[], activeStepIndex?: number | null }) {
     const renderer = useRenderer();
 
+    const { palette } = useTerminalColors();
+    
+    const [panelFocused, setPanelFocused] = createSignal<'steps' | 'log'>('log');
+
     useKeyboard((key) => {
         if(key.ctrl && key.name === 'b') renderer.console.toggle(); 
-        console.log(`Key pressed: ${key.name}`);
+        if(key.name === '1') setPanelFocused('steps');
+        if(key.name === '2') setPanelFocused('log');
     });
 
     return (
         <box flexDirection="column" height="100%" width="100%">
             <box flexDirection="row" gap={1} flexGrow={1}>
-                <box border={true} borderStyle="rounded">
+                <box border={true} borderStyle="rounded" title="[1]─Steps" borderColor={panelFocused() === 'steps' ? palette().defaultForeground : 'white'}>
                     <For each={props.steps} fallback={<text>No steps defined.</text>}>
                         {(step, index) => (
-                            <box backgroundColor={props.activeStepIndex === index() ? "blue" : undefined}>
+                            <box backgroundColor={props.activeStepIndex === index() ? palette().palette[4] : undefined}>
                                 <text>{step.title}</text>
                             </box>
                         )}
                     </For>
                 </box>
-                <box border={true} borderStyle="rounded" flexGrow={1}>
+                <scrollbox border={true} borderStyle="rounded" flexGrow={1} title="Log" scrollY={true}>
                     <Show when={props.activeStepIndex !== null && props.steps[props.activeStepIndex ?? -1]} fallback={<text>No active step.</text>}>
                         <For each={props.steps[props.activeStepIndex ?? -1]?.log} fallback={<text>No steps defined.</text>}>
                             {(log) => (
@@ -36,7 +40,7 @@ function App(props: { steps: StepDetail[], activeStepIndex?: number | null }) {
                             )}
                         </For>
                     </Show>
-                </box>
+                </scrollbox>
             </box>
             <DialogContainer />
         </box>
@@ -111,7 +115,11 @@ export function createWorkflow() {
         setActiveStepIndex(null);
     }
 
-    render(() => <App steps={steps} activeStepIndex={activeStepIndex()}/>, {
+    render(() => (
+        <TerminalColorProvider>
+            <App steps={steps} activeStepIndex={activeStepIndex()}/>
+        </TerminalColorProvider>
+    ), {
         targetFps: 60,
         gatherStats: false,
         exitOnCtrlC: true,
