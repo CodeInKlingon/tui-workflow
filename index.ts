@@ -18,20 +18,10 @@ workflow.addStep({
         await new Promise((resolve) => setTimeout(resolve, 2000));
         spin.stop("Done processing.");
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        const shouldContinue = await confirm("Do you want to continue to the next step?");
-        if(!shouldContinue) exit();
+        const shouldExit = await confirm("We encountered something unexpected while processing. Do you want to exit?");
+        if(shouldExit) exit();
         await new Promise((resolve) => setTimeout(resolve, 1000));
         log("Initialization complete.");
-        log("Initialization complete.");
-        log("Initialization complete.");
-        log("Initialization complete.");
-        log("Initialization complete.");
-        log("Initialization complete.");
-        log("Initialization complete.");
-        log("Initialization complete.");
-        log("Initialization complete.");
-        log("Initialization complete.");
-        await new Promise((resolve) => setTimeout(resolve, 10000));
     }
 });
 
@@ -45,6 +35,3 @@ workflow.addStep({
         log("Data processed.");
     }
 });
-
-
-workflow.startWorkflow();
