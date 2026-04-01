@@ -2,9 +2,9 @@ import { createWorkflow } from "./src/lib";
 
 const workflow = createWorkflow();
 
-workflow.addStep({
-    title: "Step 1: Initialize",
-    key: "step1",
+workflow.addStage({
+    title: "Stage 1: Initialize",
+    key: "stage1",
     action: async ({ log, confirm, exit, prompt, spinner }) => {
         // Simulate some async work
         log("Initializing...");
@@ -25,13 +25,20 @@ workflow.addStep({
     }
 });
 
-workflow.addStep({
-    title: "Step 2: Process Data",
-    key: "step2",
-    action: async ({ log }) => {
-        // Simulate some async work
+workflow.addStage({
+    title: "Stage 2: Process Data",
+    key: "stage2",
+    action: async ({ log, progress }) => {
         log("Processing data...");
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const p = progress(100);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        p.advance(25, "Fetching profiles");
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        p.advance(25, "Validating records");
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        p.advance(25, "Saving changes");
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        p.complete("All done");
         log("Data processed.");
     }
 });

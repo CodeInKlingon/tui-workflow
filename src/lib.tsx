@@ -1,47 +1,48 @@
 import { render, useKeyboard, useRenderer } from "@opentui/solid"
 import { createSignal, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
-import type { Step, StepDetail } from "./types";
+import type { Stage, StageDetail } from "./types";
 import { DialogContainer, dialogService } from "./dialog";
 import { Confirm, Prompt } from "./confirm";
 import { Spinner } from "./spinner";
+import { Progress } from "./progress";
 import { useTerminalColors, TerminalColorProvider } from "./theme";
 import { FocusTheme } from "./focus-colors";
 
-export const [panelFocused, setPanelFocused] = createSignal<string>('steps');
-const [activeStepIndex, setActiveStepIndex] = createSignal<number>(0);
+export const [panelFocused, setPanelFocused] = createSignal<string>('stages');
+const [activeStageIndex, setActiveStageIndex] = createSignal<number>(0);
 
-function App(props: { steps: StepDetail[], runStep: (index: number) => void }) {
+function App(props: { stages: StageDetail[], runStage: (index: number) => void }) {
     const renderer = useRenderer();
 
-    const mainPanelsFocused = () => panelFocused() === 'steps' || panelFocused() === 'log';
+    const mainPanelsFocused = () => panelFocused() === 'stages' || panelFocused() === 'log';
     useKeyboard((key) => {
         if(key.ctrl && key.name === 'b') renderer.console.toggle(); 
-        if(key.name === '1' && mainPanelsFocused()) setPanelFocused('steps');
+        if(key.name === '1' && mainPanelsFocused()) setPanelFocused('stages');
         if(key.name === '2' && mainPanelsFocused()) setPanelFocused('log');
     });
 
     return (
         <box flexDirection="column" height="100%" width="100%">
             <box flexDirection="row" gap={1} flexGrow={1}>
-                <StepPanel steps={props.steps} isFocused={panelFocused() === 'steps'} runStep={props.runStep} />
-                <LogPanel steps={props.steps} isFocused={panelFocused() === 'log'} />
+                <StagePanel stages={props.stages} isFocused={panelFocused() === 'stages'} runStage={props.runStage} />
+                <LogPanel stages={props.stages} isFocused={panelFocused() === 'log'} />
             </box>
             <DialogContainer />
         </box>
     )
 }
 
-function LogPanel(props: { steps: StepDetail[], isFocused: boolean }) {
+function LogPanel(props: { stages: StageDetail[], isFocused: boolean }) {
     const { palette } = useTerminalColors();
-    const activeStep = () => activeStepIndex() !== null ? props.steps[activeStepIndex()!] : undefined;
-    const logTitle = () => activeStep() ? `[2]─Log: ${activeStep()!.title}` : "[2]─Log";
+    const activeStage = () => activeStageIndex() !== null ? props.stages[activeStageIndex()!] : undefined;
+    const logTitle = () => activeStage() ? `[2]─Log: ${activeStage()!.title}` : "[2]─Log";
     return (
         <FocusTheme isHighlighted={props.isFocused} highlightForeground={palette().highlightForeground} foreground={palette().defaultForeground}>
             {({foreground}) => (
                 <scrollbox border={true} borderStyle="rounded" flexShrink={1} title={logTitle()} borderColor={foreground} scrollY={true}>
-                    <Show when={activeStepIndex() !== null && props.steps[activeStepIndex() ?? -1]} fallback={<text fg={foreground}>No active step.</text>}>
-                        <For each={props.steps[activeStepIndex() ?? -1]?.log} fallback={<text fg={foreground}>No steps defined.</text>}>
+                    <Show when={activeStageIndex() !== null && props.stages[activeStageIndex() ?? -1]} fallback={<text fg={foreground}>No active stage.</text>}>
+                        <For each={props.stages[activeStageIndex() ?? -1]?.log} fallback={<text fg={foreground}>No stages defined.</text>}>
                             {(log) => (
                                 log.type === 'text' ? <text fg={foreground}>{log.content}</text> : log.render()
                             )}
@@ -53,7 +54,7 @@ function LogPanel(props: { steps: StepDetail[], isFocused: boolean }) {
     )
 }
 
-function StepPanel(props: { steps: StepDetail[], isFocused: boolean, runStep: (index: number) => void }) {
+function StagePanel(props: { stages: StageDetail[], isFocused: boolean, runStage: (index: number) => void }) {
     const { palette } = useTerminalColors();
 
     useKeyboard((key) => {
@@ -61,25 +62,25 @@ function StepPanel(props: { steps: StepDetail[], isFocused: boolean, runStep: (i
             return;
         };
         if(key.name === 'up'){
-            const newIndex = Math.max((activeStepIndex() ?? 1) - 1, 0);
-            setActiveStepIndex(newIndex);
+            const newIndex = Math.max((activeStageIndex() ?? 1) - 1, 0);
+            setActiveStageIndex(newIndex);
             
         }
         if(key.name === 'down'){
-            const newIndex = Math.min((activeStepIndex() ?? props.steps.length - 2) + 1, props.steps.length - 1);
-            setActiveStepIndex(newIndex);
+            const newIndex = Math.min((activeStageIndex() ?? props.stages.length - 2) + 1, props.stages.length - 1);
+            setActiveStageIndex(newIndex);
         }
         if(key.name === 'return'){
-            props.runStep(activeStepIndex());
+            props.runStage(activeStageIndex());
         }
     });
     return (
         <FocusTheme isHighlighted={props.isFocused} highlightForeground={palette().highlightForeground} foreground={palette().defaultForeground}>
             {({foreground, isHighlighted}) => (
-                <box border={true} borderStyle="rounded" title="[1]─Steps" borderColor={foreground} flexBasis={40}>
-                    <For each={props.steps} fallback={<text fg={foreground}>No steps defined.</text>}>
-                        {(step, index) => (
-                            <StepListItem step={step} isFocused={isHighlighted && activeStepIndex() === index()} isActive={activeStepIndex() === index()} />
+                <box border={true} borderStyle="rounded" title="[1]─Stages" borderColor={foreground} flexBasis={40}>
+                    <For each={props.stages} fallback={<text fg={foreground}>No stages defined.</text>}>
+                        {(stage, index) => (
+                            <StageListItem stage={stage} isFocused={isHighlighted && activeStageIndex() === index()} isActive={activeStageIndex() === index()} />
                         )}
                     </For>
                 </box>
@@ -89,39 +90,39 @@ function StepPanel(props: { steps: StepDetail[], isFocused: boolean, runStep: (i
 }
 
 
-function StepListItem(props: {step: StepDetail, isFocused: boolean, isActive: boolean}) {
+function StageListItem(props: {stage: StageDetail, isFocused: boolean, isActive: boolean}) {
     const { palette } = useTerminalColors();
-    const stepsForeground = () => props.isFocused || props.isActive ? palette().highlightForeground : palette().defaultForeground;
+    const stageForeground = () => props.isFocused || props.isActive ? palette().highlightForeground : palette().defaultForeground;
     return <box flexDirection="row" backgroundColor={props.isActive ? palette().palette[4] : undefined}>
-        <Show when={props.step.status == 'in-progress'} fallback={<text>•</text>}><spinner name="dots" color={stepsForeground()} /></Show>
-        <text fg={stepsForeground()}>{props.step.title}</text>
+        <Show when={props.stage.status == 'in-progress'} fallback={<text>•</text>}><spinner name="dots" color={stageForeground()} /></Show>
+        <text fg={stageForeground()}>{props.stage.title}</text>
     </box>
 }
 
 export function createWorkflow() {
-    const [steps, setSteps] = createStore<StepDetail[]>([]);
+    const [stages, setStages] = createStore<StageDetail[]>([]);
     
-    function addStep(step: Step) {
-        setSteps(steps.length, { ...step, status: 'pending', log: [] });
+    function addStage(stage: Stage) {
+        setStages(stages.length, { ...stage, status: 'pending', log: [] });
     }
     
-    async function runStep(index: number) {
-        const step = steps[index];
-        if (!step || step.status === 'in-progress') return;
+    async function runStage(index: number) {
+        const stage = stages[index];
+        if (!stage || stage.status === 'in-progress') return;
         
-        setActiveStepIndex(index);
-        setSteps(index, 'status', 'in-progress');
+        setActiveStageIndex(index);
+        setStages(index, 'status', 'in-progress');
         
         try {
-            await step.action({ 
+            await stage.action({ 
                 log: (message: string) => {
-                    setSteps(index, 'log', (logs) => [...logs, { type: 'text' as const, content: message }]);
+                    setStages(index, 'log', (logs) => [...logs, { type: 'text' as const, content: message }]);
                 },
                 prompt: async (message: string) => {
                     const returnFocus = panelFocused();
                     setPanelFocused('prompt');
                     const result = await dialogService.add<string>((resolve, reject) => (
-                        <Prompt message={message} title={step.title} resolve={resolve} reject={reject} />
+                        <Prompt message={message} title={stage.title} resolve={resolve} reject={reject} />
                     ));
                     setPanelFocused(returnFocus);
                     return result;
@@ -130,7 +131,7 @@ export function createWorkflow() {
                     const returnFocus = panelFocused();
                     setPanelFocused('confirm');
                     const result = await dialogService.add<boolean>((resolve, reject) => (
-                        <Confirm message={message} title={step.title} resolve={resolve} reject={reject} />
+                        <Confirm message={message} title={stage.title} resolve={resolve} reject={reject} />
                     ));
                     setPanelFocused(returnFocus);
                     return result;
@@ -140,7 +141,7 @@ export function createWorkflow() {
                     const [complete, setCompleted] = createSignal<boolean>(false);
                     function start(msg: string){
                         setMessageText(msg);
-                        setSteps(index, 'log', (logs) => [...logs, { type: 'component' as const, render: () => 
+                        setStages(index, 'log', (logs) => [...logs, { type: 'component' as const, render: () => 
                             <Spinner message={messageText()} complete={complete()} /> 
                         }]);
                     }
@@ -158,19 +159,41 @@ export function createWorkflow() {
                         stop
                     }
                 },
-                // progress: async () => {},
+                progress: (total: number) => {
+                    const [current, setCurrent] = createSignal(0);
+                    const [message, setMessage] = createSignal<string | undefined>(undefined);
+                    const [status, setStatus] = createSignal<'active' | 'complete' | 'halted'>('active');
+                    setStages(index, 'log', (logs) => [...logs, { type: 'component' as const, render: () =>
+                        <Progress total={total} current={current()} message={message()} status={status()} />
+                    }]);
+                    return {
+                        advance(amount: number, msg?: string) {
+                            setCurrent((prev) => prev + amount);
+                            if (msg !== undefined) setMessage(msg);
+                        },
+                        complete(msg?: string) {
+                            setCurrent(total);
+                            if (msg !== undefined) setMessage(msg);
+                            setStatus('complete');
+                        },
+                        halt(msg?: string) {
+                            if (msg !== undefined) setMessage(msg);
+                            setStatus('halted');
+                        },
+                    };
+                },
                 exit: () => process.exit(0),
             });
-            setSteps(index, 'status', 'completed');
+            setStages(index, 'status', 'completed');
         } catch (e) {
-            setSteps(index, 'status', 'failed');
-            setSteps(index, 'error', (e instanceof Error ? e.message : String(e)));
+            setStages(index, 'status', 'failed');
+            setStages(index, 'error', (e instanceof Error ? e.message : String(e)));
         }
     }
 
     render(() => (
         <TerminalColorProvider>
-            <App steps={steps} runStep={runStep} />
+            <App stages={stages} runStage={runStage} />
         </TerminalColorProvider>
     ), {
         targetFps: 60,
@@ -179,8 +202,8 @@ export function createWorkflow() {
     });
 
     return {
-        steps,
-        addStep,
-        runStep,
+        stages,
+        addStage,
+        runStage,
     };
 }
