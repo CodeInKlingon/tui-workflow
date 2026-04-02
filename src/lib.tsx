@@ -1,5 +1,6 @@
 import { render, useKeyboard, useRenderer } from "@opentui/solid"
-import { createSignal, For, Show } from "solid-js"
+import type { ScrollBoxRenderable } from "@opentui/core"
+import { createEffect, createSignal, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { Stage, StageDetail, VariableState } from "./types";
 import { DialogContainer, dialogService } from "./dialog";
@@ -47,7 +48,7 @@ function LogPanel(props: { stages: StageDetail[], isFocused: boolean }) {
     return (
         <FocusTheme isHighlighted={props.isFocused} highlightForeground={palette().highlightForeground} foreground={palette().defaultForeground}>
             {({foreground}) => (
-                <scrollbox border={true} borderStyle="rounded" flexShrink={1} title={logTitle()} borderColor={foreground} scrollY={true}>
+                <scrollbox border={true} borderStyle="rounded" flexShrink={1} title={logTitle()} borderColor={foreground} focusedBorderColor={foreground} scrollY={true} focused={props.isFocused} stickyScroll={true} stickyStart="bottom">
                     <Show when={activeStageIndex() !== null && props.stages[activeStageIndex() ?? -1]} fallback={<text fg={foreground}>No active stage.</text>}>
                         <For each={props.stages[activeStageIndex() ?? -1]?.log} fallback={<text fg={foreground}>No stages defined.</text>}>
                             {(log) => (
@@ -63,6 +64,7 @@ function LogPanel(props: { stages: StageDetail[], isFocused: boolean }) {
 
 function StagePanel(props: { stages: StageDetail[], isFocused: boolean, runStage: (index: number) => void }) {
     const { palette } = useTerminalColors();
+    let scrollRef: ScrollBoxRenderable | undefined;
 
     useKeyboard((key) => {
         if(!props.isFocused) {
@@ -81,16 +83,24 @@ function StagePanel(props: { stages: StageDetail[], isFocused: boolean, runStage
             props.runStage(activeStageIndex());
         }
     });
+
+    createEffect(() => {
+        const index = activeStageIndex();
+        if (scrollRef && index != null) {
+            scrollRef.scrollTo({ x: 0, y: index });
+        }
+    });
+
     return (
         <FocusTheme isHighlighted={props.isFocused} highlightForeground={palette().highlightForeground} foreground={palette().defaultForeground}>
             {({foreground, isHighlighted}) => (
-                <box border={true} borderStyle="rounded" title="[1]─Stages" borderColor={foreground} flexGrow={1}>
+                <scrollbox ref={scrollRef} border={true} borderStyle="rounded" title="[1]─Stages" borderColor={foreground} flexGrow={1} scrollY={true} focused={false}>
                     <For each={props.stages} fallback={<text fg={foreground}>No stages defined.</text>}>
                         {(stage, index) => (
                             <StageListItem stage={stage} isFocused={isHighlighted && activeStageIndex() === index()} isActive={activeStageIndex() === index()} />
                         )}
                     </For>
-                </box>
+                </scrollbox>
             )}
         </FocusTheme>
     )

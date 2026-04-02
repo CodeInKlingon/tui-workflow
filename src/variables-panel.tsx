@@ -1,5 +1,6 @@
-import { createSignal, For } from "solid-js";
+import { createEffect, createSignal, For } from "solid-js";
 import { useKeyboard } from "@opentui/solid";
+import type { ScrollBoxRenderable } from "@opentui/core";
 import type { VariableState } from "./types";
 import { useTerminalColors } from "./theme";
 import { FocusTheme } from "./focus-colors";
@@ -8,6 +9,7 @@ import { editVariable } from "./variables";
 export function VariablesPanel(props: { variables: VariableState[], isFocused: boolean }) {
     const { palette } = useTerminalColors();
     const [selectedIndex, setSelectedIndex] = createSignal(0);
+    let scrollRef: ScrollBoxRenderable | undefined;
 
     useKeyboard((key) => {
         if (!props.isFocused) return;
@@ -26,10 +28,17 @@ export function VariablesPanel(props: { variables: VariableState[], isFocused: b
         }
     });
 
+    createEffect(() => {
+        const index = selectedIndex();
+        if (scrollRef && index != null) {
+            scrollRef.scrollTo({ x: 0, y: index });
+        }
+    });
+
     return (
         <FocusTheme isHighlighted={props.isFocused} highlightForeground={palette().highlightForeground} foreground={palette().defaultForeground}>
             {({ foreground, isHighlighted }) => (
-                <box border={true} borderStyle="rounded" title="[3]─Variables" borderColor={foreground} flexGrow={1}>
+                <scrollbox ref={scrollRef} border={true} borderStyle="rounded" title="[3]─Variables" borderColor={foreground} flexGrow={1} scrollY={true} focused={false}>
                     <For each={props.variables} fallback={<text fg={foreground}>No variables defined.</text>}>
                         {(variable, index) => (
                             <VariableListItem
@@ -39,7 +48,7 @@ export function VariablesPanel(props: { variables: VariableState[], isFocused: b
                             />
                         )}
                     </For>
-                </box>
+                </scrollbox>
             )}
         </FocusTheme>
     );
