@@ -1,4 +1,4 @@
-import { render, useKeyboard, useRenderer } from "@opentui/solid"
+import { render, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { createEffect, createSignal, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -18,6 +18,7 @@ const [activeStageIndex, setActiveStageIndex] = createSignal<number>(0);
 
 function App(props: { stages: StageDetail[], variables: VariableState[], runStage: (index: number) => void }) {
     const renderer = useRenderer();
+    const dimensions = useTerminalDimensions();
 
     const mainPanelsFocused = () => panelFocused() === 'stages' || panelFocused() === 'log' || panelFocused() === 'variables';
     useKeyboard((key) => {
@@ -28,7 +29,7 @@ function App(props: { stages: StageDetail[], variables: VariableState[], runStag
     });
 
     return (
-        <box flexDirection="column" height="100%" width="100%">
+        <box flexDirection="column" height={dimensions().height} width={dimensions().width}>
             <box flexDirection="row" gap={1} flexGrow={1}>
                 <box flexDirection="column" flexBasis={40}>
                     <StagePanel stages={props.stages} isFocused={panelFocused() === 'stages'} runStage={props.runStage} />

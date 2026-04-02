@@ -15,8 +15,8 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@opentui/core": "^0.1.69",
-    "@opentui/solid": "^0.1.69",
+    "@opentui/core": "^0.1.95",
+    "@opentui/solid": "^0.1.95",
     "opentui-spinner": "^0.0.6",
     "solid-js": "^1.9"
   }
