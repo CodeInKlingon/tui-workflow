@@ -11,6 +11,7 @@ import { useTerminalColors, TerminalColorProvider } from "./theme";
 import { FocusTheme } from "./focus-colors";
 import { panelFocused, setPanelFocused } from "./focus";
 export { panelFocused, setPanelFocused } from "./focus";
+export type { VariableType, VariableValueFor, VariableDefinition, VariableState, VariableHandle, ProgressHandle, Stage, StageDetail, LogEntry } from "./types";
 import { variables, defineVariable } from "./variables";
 import { VariablesPanel } from "./variables-panel";
 
