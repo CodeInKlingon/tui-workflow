@@ -35,6 +35,8 @@ export interface VariableState<T extends VariableType = VariableType> extends Va
 export interface VariableHandle<T extends VariableType = VariableType> {
     /** Resolve the variable value. Prompts the user if not yet set. */
     get: () => Promise<VariableValueFor<T>>;
+    /** Always prompt the user for a new value, even if already set. Useful for re-authenticating stale credentials. */
+    prompt: () => Promise<VariableValueFor<T>>;
     /** Non-blocking read. Returns undefined if not yet set. */
     peek: () => VariableValueFor<T> | undefined;
     /** Programmatically set the variable value. */

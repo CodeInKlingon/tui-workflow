@@ -39,6 +39,17 @@ export function defineVariable<T extends VariableType>(
         name,
         type: options.type,
         get: () => resolveVariable<T>(name),
+        prompt: async () => {
+            const state = variables.find(v => v.name === name);
+            if (!state) throw new Error(`Variable "${name}" is not defined.`);
+            const result = await promptForVariable<T>(state as VariableState<T>);
+            const idx = variables.findIndex(v => v.name === name);
+            if (idx !== -1) {
+                setVariables(idx, 'value', result as any);
+                setVariables(idx, 'isSet', true);
+            }
+            return result;
+        },
         peek: () => {
             const state = variables.find(v => v.name === name);
             return state?.value as VariableValueFor<T> | undefined;
