@@ -1,31 +1,38 @@
 import { render, useKeyboard, useRenderer } from "@opentui/solid"
 import { createSignal, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
-import type { Stage, StageDetail } from "./types";
+import type { Stage, StageDetail, VariableState } from "./types";
 import { DialogContainer, dialogService } from "./dialog";
 import { Confirm, Prompt } from "./confirm";
 import { Spinner } from "./spinner";
 import { Progress } from "./progress";
 import { useTerminalColors, TerminalColorProvider } from "./theme";
 import { FocusTheme } from "./focus-colors";
+import { panelFocused, setPanelFocused } from "./focus";
+export { panelFocused, setPanelFocused } from "./focus";
+import { variables, defineVariable } from "./variables";
+import { VariablesPanel } from "./variables-panel";
 
-export const [panelFocused, setPanelFocused] = createSignal<string>('stages');
 const [activeStageIndex, setActiveStageIndex] = createSignal<number>(0);
 
-function App(props: { stages: StageDetail[], runStage: (index: number) => void }) {
+function App(props: { stages: StageDetail[], variables: VariableState[], runStage: (index: number) => void }) {
     const renderer = useRenderer();
 
-    const mainPanelsFocused = () => panelFocused() === 'stages' || panelFocused() === 'log';
+    const mainPanelsFocused = () => panelFocused() === 'stages' || panelFocused() === 'log' || panelFocused() === 'variables';
     useKeyboard((key) => {
         if(key.ctrl && key.name === 'b') renderer.console.toggle(); 
         if(key.name === '1' && mainPanelsFocused()) setPanelFocused('stages');
         if(key.name === '2' && mainPanelsFocused()) setPanelFocused('log');
+        if(key.name === '3' && mainPanelsFocused()) setPanelFocused('variables');
     });
 
     return (
         <box flexDirection="column" height="100%" width="100%">
             <box flexDirection="row" gap={1} flexGrow={1}>
-                <StagePanel stages={props.stages} isFocused={panelFocused() === 'stages'} runStage={props.runStage} />
+                <box flexDirection="column" flexBasis={40}>
+                    <StagePanel stages={props.stages} isFocused={panelFocused() === 'stages'} runStage={props.runStage} />
+                    <VariablesPanel variables={props.variables} isFocused={panelFocused() === 'variables'} />
+                </box>
                 <LogPanel stages={props.stages} isFocused={panelFocused() === 'log'} />
             </box>
             <DialogContainer />
@@ -77,7 +84,7 @@ function StagePanel(props: { stages: StageDetail[], isFocused: boolean, runStage
     return (
         <FocusTheme isHighlighted={props.isFocused} highlightForeground={palette().highlightForeground} foreground={palette().defaultForeground}>
             {({foreground, isHighlighted}) => (
-                <box border={true} borderStyle="rounded" title="[1]─Stages" borderColor={foreground} flexBasis={40}>
+                <box border={true} borderStyle="rounded" title="[1]─Stages" borderColor={foreground} flexGrow={1}>
                     <For each={props.stages} fallback={<text fg={foreground}>No stages defined.</text>}>
                         {(stage, index) => (
                             <StageListItem stage={stage} isFocused={isHighlighted && activeStageIndex() === index()} isActive={activeStageIndex() === index()} />
@@ -193,7 +200,7 @@ export function createWorkflow() {
 
     render(() => (
         <TerminalColorProvider>
-            <App stages={stages} runStage={runStage} />
+            <App stages={stages} variables={variables} runStage={runStage} />
         </TerminalColorProvider>
     ), {
         targetFps: 60,
@@ -205,5 +212,6 @@ export function createWorkflow() {
         stages,
         addStage,
         runStage,
+        defineVariable,
     };
 }

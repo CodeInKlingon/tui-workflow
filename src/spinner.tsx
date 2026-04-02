@@ -1,6 +1,6 @@
 import "opentui-spinner/solid";
 import { Show } from "solid-js";
-import { panelFocused } from "./lib";
+import { panelFocused } from "./focus";
 import { useTerminalColors } from "./theme";
 export function Spinner(props: {message?: string, complete: boolean}) {
 	

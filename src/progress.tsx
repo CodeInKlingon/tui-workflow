@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { panelFocused } from "./lib";
+import { panelFocused } from "./focus";
 import { useTerminalColors } from "./theme";
 
 export function Progress(props: {
@@ -17,7 +17,7 @@ export function Progress(props: {
 	const barWidth = 20;
 	const filled = () => Math.round(fraction() * barWidth);
 	const empty = () => barWidth - filled();
-	const bar = () => `[${"#".repeat(filled())}${"-".repeat(empty())}]`;
+	const bar = () => `[${"▇".repeat(filled())}${"-".repeat(empty())}]`;
 
 	const statusChar = () => {
 		if (props.status === 'complete') return '*';

@@ -38,10 +38,10 @@ export function Confirm(props: {message: string, title?: string, resolve: (resul
 
 
 
-export function Prompt(props: {message: string, title?: string, resolve: (result: string) => void, reject: (reason?: any) => void}){
+export function Prompt(props: {message: string, title?: string, defaultValue?: string, resolve: (result: string) => void, reject: (reason?: any) => void}){
 
     const renderer = useRenderer();
-    const [value, setValue] = createSignal<string>('');
+    const [value, setValue] = createSignal<string>(props.defaultValue ?? '');
 
     const [backgroundColor] = createResource(async () => {
         const palette = await renderer.getPalette();
