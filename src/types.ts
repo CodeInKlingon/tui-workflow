@@ -56,6 +56,11 @@ export interface Stage {
         log: (message: string) => void,
         confirm: (message: string) => Promise<boolean>,
         prompt: (message: string) => Promise<string>,
+        checkboxGroup: <T>(options: {
+            options: T[];
+            label: (option: T) => string;
+            title?: string;
+        }) => Promise<T[]>;
         spinner: () => any,
         progress: (total: number) => ProgressHandle,
         exit: () => void,
@@ -74,6 +79,11 @@ export interface InitContext {
     log: (message: string) => void;
     confirm: (message: string) => Promise<boolean>;
     prompt: (message: string) => Promise<string>;
+    checkboxGroup: <T>(options: {
+        options: T[];
+        label: (option: T) => string;
+        title?: string;
+    }) => Promise<T[]>;
     spinner: () => {
         start: (msg: string) => void;
         message: (msg: string) => void;

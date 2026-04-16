@@ -5,6 +5,7 @@ import { createStore } from "solid-js/store"
 import type { Stage, StageDetail, VariableState, InitContext, WorkflowConfig, LogEntry } from "./types";
 import { DialogContainer, dialogService } from "./dialog";
 import { Confirm, Prompt } from "./confirm";
+import { CheckboxGroup } from "./checkbox-group";
 import { Spinner } from "./spinner";
 import { Progress } from "./progress";
 import { useTerminalColors, TerminalColorProvider } from "./theme";
@@ -195,6 +196,15 @@ export function createWorkflow(config?: WorkflowConfig) {
                     setPanelFocused(returnFocus);
                     return result;
                 },
+                checkboxGroup: async <T,>(options: { options: T[]; label: (option: T) => string; title?: string }) => {
+                    const returnFocus = panelFocused();
+                    setPanelFocused('checkboxGroup');
+                    const result = await dialogService.add<T[]>((resolve, reject) => (
+                        <CheckboxGroup options={options.options} label={options.label} title={options.title} resolve={resolve} reject={reject} />
+                    ));
+                    setPanelFocused(returnFocus);
+                    return result;
+                },
                 spinner: () => {
                     const [messageText, setMessageText] = createSignal<string>('');
                     const [complete, setCompleted] = createSignal<boolean>(false);
@@ -265,6 +275,12 @@ export function createWorkflow(config?: WorkflowConfig) {
             confirm: async (message: string) => {
                 const result = await dialogService.add<boolean>((resolve, reject) => (
                     <Confirm message={message} title="Initialization" resolve={resolve} reject={reject} />
+                ));
+                return result;
+            },
+            checkboxGroup: async <T,>(options: { options: T[]; label: (option: T) => string; title?: string }) => {
+                const result = await dialogService.add<T[]>((resolve, reject) => (
+                    <CheckboxGroup options={options.options} label={options.label} title={options.title} resolve={resolve} reject={reject} />
                 ));
                 return result;
             },

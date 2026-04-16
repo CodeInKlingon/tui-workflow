@@ -480,6 +480,29 @@ workflow.addStage({
 });
 
 workflow.addStage({
+    title: "Stage 8: Select Features",
+    key: "stage8",
+    action: async ({ log, checkboxGroup }) => {
+        const features = await checkboxGroup({
+            options: [
+                { id: 'auth', name: 'Authentication', category: 'Security' },
+                { id: 'logging', name: 'Audit Logging', category: 'Monitoring' },
+                { id: 'cache', name: 'Redis Cache', category: 'Performance' },
+                { id: 'ssl', name: 'SSL Termination', category: 'Security' },
+                { id: 'metrics', name: 'Prometheus Metrics', category: 'Monitoring' },
+            ],
+            label: (opt) => `${opt.name} (${opt.category})`,
+            title: 'Select Features to Enable'
+        });
+
+        log(`Selected ${features.length} features:`);
+        for (const feature of features) {
+            log(`  ✓ ${feature.name} (${feature.category})`);
+        }
+    }
+});
+
+workflow.addStage({
     title: "Stage 9: Notify & Cleanup",
     key: "stage9",
     action: async ({ log, spinner }) => {
