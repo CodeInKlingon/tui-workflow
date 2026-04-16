@@ -67,3 +67,22 @@ export interface StageDetail extends Stage {
     error?: string;
     log: LogEntry[];
 }
+
+// --- Init Types ---
+
+export interface InitContext {
+    log: (message: string) => void;
+    confirm: (message: string) => Promise<boolean>;
+    prompt: (message: string) => Promise<string>;
+    spinner: () => {
+        start: (msg: string) => void;
+        message: (msg: string) => void;
+        stop: (msg: string) => void;
+    };
+    progress: (total: number) => ProgressHandle;
+    exit: () => void;
+}
+
+export interface WorkflowConfig {
+    init?: (ctx: InitContext) => Promise<void>;
+}

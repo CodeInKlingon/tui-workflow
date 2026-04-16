@@ -3,16 +3,28 @@
 A terminal ui library for defining and running workflows. Built on top of opentui. Define your workflow variables and stages with easy to use ui components like prompts, progress bars, and spinners. 
 
 ```ts
-import { createWorkflow } from "tui-workflow";
+import { createWorkflow, defineVariable } from "tui-workflow";
 
-const workflow = createWorkflow();
-
-const version = workflow.defineVariable("version", {
+// Define variables at module level (accessible in init and stages)
+const version = defineVariable("version", {
     type: "string",
     description: "The version of the application to deploy",
     defaultValue: "1.0.0",
 });
 
+// Create workflow with optional init stage
+const workflow = createWorkflow({
+    init: async ({ log, confirm, spinner, exit }) => {
+        log("Starting initialization...");
+        const ver = await version.get();
+        log(`Initializing version ${ver}...`);
+        
+        const shouldProceed = await confirm("Proceed with deployment?");
+        if (!shouldProceed) exit();
+        
+        log("Initialization complete!");
+    }
+});
 
 workflow.addStage({
     title: "Stage 1: Initialize",

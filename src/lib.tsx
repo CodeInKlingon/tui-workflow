@@ -2,7 +2,7 @@ import { render, useKeyboard, useRenderer, useTerminalDimensions } from "@opentu
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { createEffect, createSignal, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
-import type { Stage, StageDetail, VariableState } from "./types";
+import type { Stage, StageDetail, VariableState, InitContext, WorkflowConfig, LogEntry } from "./types";
 import { DialogContainer, dialogService } from "./dialog";
 import { Confirm, Prompt } from "./confirm";
 import { Spinner } from "./spinner";
@@ -11,7 +11,8 @@ import { useTerminalColors, TerminalColorProvider } from "./theme";
 import { FocusTheme } from "./focus-colors";
 import { panelFocused, setPanelFocused } from "./focus";
 export { panelFocused, setPanelFocused } from "./focus";
-export type { VariableType, VariableValueFor, VariableDefinition, VariableState, VariableHandle, ProgressHandle, Stage, StageDetail, LogEntry } from "./types";
+export type { VariableType, VariableValueFor, VariableDefinition, VariableState, VariableHandle, ProgressHandle, Stage, StageDetail, LogEntry, InitContext, WorkflowConfig } from "./types";
+export { defineVariable } from "./variables";
 import { variables, defineVariable } from "./variables";
 import { VariablesPanel } from "./variables-panel";
 
@@ -118,8 +119,47 @@ function StageListItem(props: {stage: StageDetail, isFocused: boolean, isActive:
     </box>
 }
 
-export function createWorkflow() {
+function InitApp(props: { 
+    logs: LogEntry[], 
+    children?: any 
+}) {
+    const { palette } = useTerminalColors();
+    const dimensions = useTerminalDimensions();
+
+    return (
+        <box 
+            flexDirection="column" 
+            height={dimensions().height} 
+            width={dimensions().width}
+            alignItems="center"
+            justifyContent="center"
+        >
+            <box 
+                flexDirection="column" 
+                width={Math.min(80, dimensions().width - 4)}
+                height={Math.min(20, dimensions().height - 4)}
+                border={true}
+                borderStyle="rounded"
+                borderColor={palette().defaultForeground}
+                title="Initializing"
+            >
+                <scrollbox flexGrow={1} scrollY={true} stickyScroll={true} stickyStart="bottom">
+                    <For each={props.logs}>
+                        {(log) => (
+                            log.type === 'text' ? <text>{log.content}</text> : log.render()
+                        )}
+                    </For>
+                </scrollbox>
+            </box>
+            <DialogContainer />
+        </box>
+    );
+}
+
+export function createWorkflow(config?: WorkflowConfig) {
     const [stages, setStages] = createStore<StageDetail[]>([]);
+    const [initLogs, setInitLogs] = createSignal<LogEntry[]>([]);
+    const [initStatus, setInitStatus] = createSignal<'idle' | 'running' | 'completed' | 'failed'>('idle');
     
     function addStage(stage: Stage) {
         setStages(stages.length, { ...stage, status: 'pending', log: [] });
@@ -210,11 +250,108 @@ export function createWorkflow() {
         }
     }
 
-    render(() => (
-        <TerminalColorProvider>
-            <App stages={stages} variables={variables} runStage={runStage} />
-        </TerminalColorProvider>
-    ), {
+    // Create the init context with bound log function
+    function createInitContext(): InitContext {
+        return {
+            log: (message: string) => {
+                setInitLogs((logs) => [...logs, { type: 'text' as const, content: message }]);
+            },
+            prompt: async (message: string) => {
+                const result = await dialogService.add<string>((resolve, reject) => (
+                    <Prompt message={message} title="Initialization" resolve={resolve} reject={reject} />
+                ));
+                return result;
+            },
+            confirm: async (message: string) => {
+                const result = await dialogService.add<boolean>((resolve, reject) => (
+                    <Confirm message={message} title="Initialization" resolve={resolve} reject={reject} />
+                ));
+                return result;
+            },
+            spinner: () => {
+                const [messageText, setMessageText] = createSignal<string>('');
+                const [complete, setCompleted] = createSignal<boolean>(false);
+                function start(msg: string){
+                    setMessageText(msg);
+                    setInitLogs((logs) => [...logs, { type: 'component' as const, render: () => 
+                        <Spinner message={messageText()} complete={complete()} /> 
+                    }]);
+                }
+                function message(msg: string){
+                    setMessageText(msg);
+                }
+                function stop(msg: string){
+                    setMessageText(msg);
+                    setCompleted(true);
+                }
+                return {
+                    start,
+                    message,
+                    stop
+                };
+            },
+            progress: (total: number) => {
+                const [current, setCurrent] = createSignal(0);
+                const [message, setMessage] = createSignal<string | undefined>(undefined);
+                const [status, setStatus] = createSignal<'active' | 'complete' | 'halted'>('active');
+                setInitLogs((logs) => [...logs, { type: 'component' as const, render: () =>
+                    <Progress total={total} current={current()} message={message()} status={status()} />
+                }]);
+                return {
+                    advance(amount: number, msg?: string) {
+                        setCurrent((prev) => prev + amount);
+                        if (msg !== undefined) setMessage(msg);
+                    },
+                    complete(msg?: string) {
+                        setCurrent(total);
+                        if (msg !== undefined) setMessage(msg);
+                        setStatus('complete');
+                    },
+                    halt(msg?: string) {
+                        if (msg !== undefined) setMessage(msg);
+                        setStatus('halted');
+                    },
+                };
+            },
+            exit: () => process.exit(0),
+        };
+    }
+
+    // Handle init execution
+    async function runInit() {
+        if (!config?.init) {
+            setInitStatus('completed');
+            return;
+        }
+
+        setInitStatus('running');
+        
+        try {
+            const ctx = createInitContext();
+            await config.init(ctx);
+            setInitStatus('completed');
+        } catch (e) {
+            const errorMsg = e instanceof Error ? e.message : String(e);
+            console.error(`Initialization failed: ${errorMsg}`);
+            process.exit(1);
+        }
+    }
+
+    // Start init immediately
+    runInit();
+
+    render(() => {
+        return (
+            <TerminalColorProvider>
+                <Show 
+                    when={initStatus() === 'completed'}
+                    fallback={<InitApp logs={initLogs()} />}
+                >
+                    <App stages={stages} variables={variables} runStage={runStage} />
+                </Show>
+            </TerminalColorProvider>
+        );
+    }, {
         targetFps: 60,
         gatherStats: false,
         exitOnCtrlC: true,
@@ -224,6 +361,5 @@ export function createWorkflow() {
         stages,
         addStage,
         runStage,
-        defineVariable,
     };
 }
