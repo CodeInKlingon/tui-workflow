@@ -132,13 +132,10 @@ function InitApp(props: {
             flexDirection="column" 
             height={dimensions().height} 
             width={dimensions().width}
-            alignItems="center"
-            justifyContent="center"
         >
             <box 
                 flexDirection="column" 
-                width={Math.min(80, dimensions().width - 4)}
-                height={Math.min(20, dimensions().height - 4)}
+                flexGrow={1}
                 border={true}
                 borderStyle="rounded"
                 borderColor={palette().defaultForeground}
