@@ -1,7 +1,8 @@
+import { Effect } from "effect";
 import { type Component, createSignal } from 'solid-js';
-import { DialogContainer, dialogService } from './dialog';
+import { DialogContainer, dialogEffect } from './dialog';
+import { DialogCancelled } from './errors';
 
-// Example dialog component
 interface ConfirmDialogProps {
   message: string;
   onResolve: (value: boolean) => void;
@@ -32,23 +33,23 @@ const ConfirmDialog: Component<ConfirmDialogProps> = (props) => {
   );
 };
 
-// Example usage
 const Example: Component = () => {
   const [result, setResult] = createSignal<string>('No result yet');
 
-  const showDialog = async () => {
-    try {
-      const answer = await dialogService.add<boolean>((resolve, reject) => (
-        <ConfirmDialog
-          message="Are you sure?"
-          onResolve={resolve}
-          onReject={reject}
-        />
-      ));
+  const showDialog = () => {
+    const program = dialogEffect.add<boolean>((resolve, reject) => (
+      <ConfirmDialog
+        message="Are you sure?"
+        onResolve={resolve}
+        onReject={reject}
+      />
+    )).pipe(
+      Effect.catchTag("DialogCancelled", () => Effect.succeed(false)),
+    );
+
+    Effect.runPromise(program).then((answer) => {
       setResult(`User answered: ${answer ? 'Yes' : 'No'}`);
-    } catch (error) {
-      setResult(`Dialog cancelled: ${error}`);
-    }
+    });
   };
 
   return (
@@ -59,7 +60,6 @@ const Example: Component = () => {
   );
 };
 
-// App setup - just include DialogContainer once in your app
 const App: Component = () => {
   return (
     <div>

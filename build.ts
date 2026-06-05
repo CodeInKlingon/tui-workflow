@@ -26,6 +26,8 @@ const result = await Bun.build({
         "opentui-spinner/*",
         "solid-js",
         "solid-js/*",
+        "effect",
+        "effect/*",
     ],
 });
 

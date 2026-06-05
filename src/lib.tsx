@@ -2,8 +2,10 @@ import { render, useKeyboard, useRenderer, useTerminalDimensions } from "@opentu
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { createEffect, createSignal, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
-import type { Stage, StageDetail, VariableState, InitContext, WorkflowConfig, LogEntry } from "./types";
-import { DialogContainer, dialogService } from "./dialog";
+import { Effect } from "effect"
+import type { Stage, StageDetail, VariableState, InitContext, WorkflowConfig, LogEntry, StageActionContext } from "./types";
+import { WorkflowExit, DialogCancelled } from "./errors";
+import { DialogContainer, dialogEffect } from "./dialog";
 import { Confirm, Prompt } from "./confirm";
 import { CheckboxGroup } from "./checkbox-group";
 import { Spinner } from "./spinner";
@@ -12,9 +14,10 @@ import { useTerminalColors, TerminalColorProvider } from "./theme";
 import { FocusTheme } from "./focus-colors";
 import { panelFocused, setPanelFocused } from "./focus";
 export { panelFocused, setPanelFocused } from "./focus";
-export type { VariableType, VariableValueFor, VariableDefinition, VariableState, VariableHandle, ProgressHandle, Stage, StageDetail, LogEntry, InitContext, WorkflowConfig } from "./types";
+export type { VariableType, VariableValueFor, VariableDefinition, VariableState, VariableHandle, ProgressHandle, Stage, StageDetail, LogEntry, InitContext, WorkflowConfig, StageActionContext, SpinnerHandle } from "./types";
+export { DialogCancelled, VariableRequired, WorkflowExit, VariableAlreadyDefined } from "./errors";
 export { defineVariable } from "./variables";
-import { variables, defineVariable } from "./variables";
+import { variables as variablesStore } from "./variables";
 import { VariablesPanel } from "./variables-panel";
 
 const [activeStageIndex, setActiveStageIndex] = createSignal<number>(0);
@@ -22,9 +25,11 @@ const [activeStageIndex, setActiveStageIndex] = createSignal<number>(0);
 function App(props: { stages: StageDetail[], variables: VariableState[], runStage: (index: number) => void }) {
     const renderer = useRenderer();
     const dimensions = useTerminalDimensions();
+    console.log('[lifecycle] App mounted, panelFocused:', panelFocused());
 
     const mainPanelsFocused = () => panelFocused() === 'stages' || panelFocused() === 'log' || panelFocused() === 'variables';
     useKeyboard((key) => {
+        console.log('[App] key pressed:', JSON.stringify({ name: key.name, ctrl: key.ctrl, shift: key.shift, meta: key.meta, focused: panelFocused() }));
         if(key.ctrl && key.name === 'b') renderer.console.toggle(); 
         if(key.name === '1' && mainPanelsFocused()) setPanelFocused('stages');
         if(key.name === '2' && mainPanelsFocused()) setPanelFocused('log');
@@ -71,6 +76,7 @@ function StagePanel(props: { stages: StageDetail[], isFocused: boolean, runStage
     let scrollRef: ScrollBoxRenderable | undefined;
 
     useKeyboard((key) => {
+        console.log('[StagePanel] key pressed:', JSON.stringify({ name: key.name, ctrl: key.ctrl, shift: key.shift, meta: key.meta, isFocused: props.isFocused }));
         if(!props.isFocused) {
             return;
         };
@@ -160,126 +166,152 @@ export function createWorkflow(config?: WorkflowConfig) {
     const [initStatus, setInitStatus] = createSignal<'idle' | 'running' | 'completed' | 'failed'>('idle');
     
     function addStage(stage: Stage) {
-        setStages(stages.length, { ...stage, status: 'pending', log: [] });
+        setStages(stages.length, { ...stage, status: 'pending' as const, log: [] });
+    }
+
+    function makeStageContext(index: number, stage: StageDetail): StageActionContext {
+        return {
+            log: (message: string) => {
+                setStages(index, 'log', (logs) => [...logs, { type: 'text' as const, content: message }]);
+            },
+            prompt: (message: string) => {
+                const returnFocus = panelFocused();
+                setPanelFocused('prompt');
+                return dialogEffect.add<string>((resolve, reject) => (
+                    <Prompt message={message} title={stage.title} resolve={resolve} reject={reject} />
+                )).pipe(
+                    Effect.ensuring(Effect.sync(() => setPanelFocused(returnFocus))),
+                );
+            },
+            confirm: (message: string) => {
+                const returnFocus = panelFocused();
+                setPanelFocused('confirm');
+                return dialogEffect.add<boolean>((resolve, reject) => (
+                    <Confirm message={message} title={stage.title} resolve={resolve} reject={reject} />
+                )).pipe(
+                    Effect.ensuring(Effect.sync(() => setPanelFocused(returnFocus))),
+                );
+            },
+            checkboxGroup: <T,>(options: { options: T[]; label: (option: T) => string; title?: string }) => {
+                const returnFocus = panelFocused();
+                setPanelFocused('checkboxGroup');
+                return dialogEffect.add<T[]>((resolve, reject) => (
+                    <CheckboxGroup options={options.options} label={options.label} title={options.title} resolve={resolve} reject={reject} />
+                )).pipe(
+                    Effect.ensuring(Effect.sync(() => setPanelFocused(returnFocus))),
+                );
+            },
+            spinner: () => {
+                const [messageText, setMessageText] = createSignal<string>('');
+                const [complete, setCompleted] = createSignal<boolean>(false);
+                function start(msg: string){
+                    setMessageText(msg);
+                    setStages(index, 'log', (logs) => [...logs, { type: 'component' as const, render: () => 
+                        <Spinner message={messageText()} complete={complete()} /> 
+                    }]);
+                }
+                function message(msg: string){
+                    setMessageText(msg);
+                }
+                function stop(msg: string){
+                    setMessageText(msg);
+                    setCompleted(true);
+                }
+
+                return { start, message, stop };
+            },
+            progress: (total: number) => {
+                const [current, setCurrent] = createSignal(0);
+                const [message, setMessage] = createSignal<string | undefined>(undefined);
+                const [status, setStatus] = createSignal<'active' | 'complete' | 'halted'>('active');
+                setStages(index, 'log', (logs) => [...logs, { type: 'component' as const, render: () =>
+                    <Progress total={total} current={current()} message={message()} status={status()} />
+                }]);
+                return {
+                    advance(amount: number, message?: string) {
+                        setCurrent((prev) => prev + amount);
+                        if (message !== undefined) setMessage(message);
+                    },
+                    complete(message?: string) {
+                        setCurrent(total);
+                        if (message !== undefined) setMessage(message);
+                        setStatus('complete');
+                    },
+                    halt(message?: string) {
+                        if (message !== undefined) setMessage(message);
+                        setStatus('halted');
+                    },
+                };
+            },
+            exit: Effect.fail(new WorkflowExit({})),
+        };
     }
     
-    async function runStage(index: number) {
+    function runStage(index: number) {
         const stage = stages[index];
         if (!stage || stage.status === 'in-progress') return;
         
         setActiveStageIndex(index);
         setStages(index, 'status', 'in-progress');
         
-        try {
-            await stage.action({ 
-                log: (message: string) => {
-                    setStages(index, 'log', (logs) => [...logs, { type: 'text' as const, content: message }]);
-                },
-                prompt: async (message: string) => {
-                    const returnFocus = panelFocused();
-                    setPanelFocused('prompt');
-                    const result = await dialogService.add<string>((resolve, reject) => (
-                        <Prompt message={message} title={stage.title} resolve={resolve} reject={reject} />
-                    ));
-                    setPanelFocused(returnFocus);
-                    return result;
-                },
-                confirm: async (message: string) => {
-                    const returnFocus = panelFocused();
-                    setPanelFocused('confirm');
-                    const result = await dialogService.add<boolean>((resolve, reject) => (
-                        <Confirm message={message} title={stage.title} resolve={resolve} reject={reject} />
-                    ));
-                    setPanelFocused(returnFocus);
-                    return result;
-                },
-                checkboxGroup: async <T,>(options: { options: T[]; label: (option: T) => string; title?: string }) => {
-                    const returnFocus = panelFocused();
-                    setPanelFocused('checkboxGroup');
-                    const result = await dialogService.add<T[]>((resolve, reject) => (
-                        <CheckboxGroup options={options.options} label={options.label} title={options.title} resolve={resolve} reject={reject} />
-                    ));
-                    setPanelFocused(returnFocus);
-                    return result;
-                },
-                spinner: () => {
-                    const [messageText, setMessageText] = createSignal<string>('');
-                    const [complete, setCompleted] = createSignal<boolean>(false);
-                    function start(msg: string){
-                        setMessageText(msg);
-                        setStages(index, 'log', (logs) => [...logs, { type: 'component' as const, render: () => 
-                            <Spinner message={messageText()} complete={complete()} /> 
-                        }]);
-                    }
-                    function message(msg: string){
-                        setMessageText(msg);
-                    }
-                    function stop(msg: string){
-                        setMessageText(msg);
-                        setCompleted(true);
-                    }
+        const ctx = makeStageContext(index, stage);
+        const program = stage.action(ctx).pipe(
+            Effect.tap(() => {
+                setStages(index, 'status', 'completed');
+            }),
+            Effect.catchTags({
+                WorkflowExit: (e) => Effect.sync(() => {
+                    console.log('WorkflowExit:', e.reason);
+                    process.exit(0);
+                }),
+                DialogCancelled: (e) => Effect.sync(() => {
+                    setStages(index, 'status', 'failed');
+                    setStages(index, 'error', `Cancelled: ${e.title ?? stage.title}`);
+                }),
+            }),
+            Effect.catchAllCause((cause) => Effect.sync(() => {
+                setStages(index, 'status', 'failed');
+                const errorMsg = cause._tag === "Fail"
+                    ? String(cause.error instanceof Error ? cause.error.message : cause.error)
+                    : String(cause);
+                setStages(index, 'error', errorMsg);
+            })),
+        );
 
-                    return {
-                        start,
-                        message,
-                        stop
-                    }
-                },
-                progress: (total: number) => {
-                    const [current, setCurrent] = createSignal(0);
-                    const [message, setMessage] = createSignal<string | undefined>(undefined);
-                    const [status, setStatus] = createSignal<'active' | 'complete' | 'halted'>('active');
-                    setStages(index, 'log', (logs) => [...logs, { type: 'component' as const, render: () =>
-                        <Progress total={total} current={current()} message={message()} status={status()} />
-                    }]);
-                    return {
-                        advance(amount: number, msg?: string) {
-                            setCurrent((prev) => prev + amount);
-                            if (msg !== undefined) setMessage(msg);
-                        },
-                        complete(msg?: string) {
-                            setCurrent(total);
-                            if (msg !== undefined) setMessage(msg);
-                            setStatus('complete');
-                        },
-                        halt(msg?: string) {
-                            if (msg !== undefined) setMessage(msg);
-                            setStatus('halted');
-                        },
-                    };
-                },
-                exit: () => process.exit(0),
-            });
-            setStages(index, 'status', 'completed');
-        } catch (e) {
-            setStages(index, 'status', 'failed');
-            setStages(index, 'error', (e instanceof Error ? e.message : String(e)));
-        }
+Effect.runPromise(program).catch((e) => { console.error('Stage error:', e); });
     }
 
-    // Create the init context with bound log function
-    function createInitContext(): InitContext {
+    function makeInitContext(): InitContext {
         return {
             log: (message: string) => {
                 setInitLogs((logs) => [...logs, { type: 'text' as const, content: message }]);
             },
-            prompt: async (message: string) => {
-                const result = await dialogService.add<string>((resolve, reject) => (
+            prompt: (message: string) => {
+                const returnFocus = panelFocused();
+                setPanelFocused('prompt');
+                return dialogEffect.add<string>((resolve, reject) => (
                     <Prompt message={message} title="Initialization" resolve={resolve} reject={reject} />
-                ));
-                return result;
+                )).pipe(
+                    Effect.ensuring(Effect.sync(() => setPanelFocused(returnFocus))),
+                );
             },
-            confirm: async (message: string) => {
-                const result = await dialogService.add<boolean>((resolve, reject) => (
+            confirm: (message: string) => {
+                const returnFocus = panelFocused();
+                setPanelFocused('confirm');
+                return dialogEffect.add<boolean>((resolve, reject) => (
                     <Confirm message={message} title="Initialization" resolve={resolve} reject={reject} />
-                ));
-                return result;
+                )).pipe(
+                    Effect.ensuring(Effect.sync(() => setPanelFocused(returnFocus))),
+                );
             },
-            checkboxGroup: async <T,>(options: { options: T[]; label: (option: T) => string; title?: string }) => {
-                const result = await dialogService.add<T[]>((resolve, reject) => (
+            checkboxGroup: <T,>(options: { options: T[]; label: (option: T) => string; title?: string }) => {
+                const returnFocus = panelFocused();
+                setPanelFocused('checkboxGroup');
+                return dialogEffect.add<T[]>((resolve, reject) => (
                     <CheckboxGroup options={options.options} label={options.label} title={options.title} resolve={resolve} reject={reject} />
-                ));
-                return result;
+                )).pipe(
+                    Effect.ensuring(Effect.sync(() => setPanelFocused(returnFocus))),
+                );
             },
             spinner: () => {
                 const [messageText, setMessageText] = createSignal<string>('');
@@ -311,27 +343,26 @@ export function createWorkflow(config?: WorkflowConfig) {
                     <Progress total={total} current={current()} message={message()} status={status()} />
                 }]);
                 return {
-                    advance(amount: number, msg?: string) {
+                    advance(amount: number, message?: string) {
                         setCurrent((prev) => prev + amount);
-                        if (msg !== undefined) setMessage(msg);
+                        if (message !== undefined) setMessage(message);
                     },
-                    complete(msg?: string) {
+                    complete(message?: string) {
                         setCurrent(total);
-                        if (msg !== undefined) setMessage(msg);
+                        if (message !== undefined) setMessage(message);
                         setStatus('complete');
                     },
-                    halt(msg?: string) {
-                        if (msg !== undefined) setMessage(msg);
+                    halt(message?: string) {
+                        if (message !== undefined) setMessage(message);
                         setStatus('halted');
                     },
                 };
             },
-            exit: () => process.exit(0),
+            exit: Effect.fail(new WorkflowExit({})),
         };
     }
 
-    // Handle init execution
-    async function runInit() {
+    function runInit() {
         if (!config?.init) {
             setInitStatus('completed');
             return;
@@ -339,18 +370,35 @@ export function createWorkflow(config?: WorkflowConfig) {
 
         setInitStatus('running');
         
-        try {
-            const ctx = createInitContext();
-            await config.init(ctx);
-            setInitStatus('completed');
-        } catch (e) {
-            const errorMsg = e instanceof Error ? e.message : String(e);
-            console.error(`Initialization failed: ${errorMsg}`);
-            process.exit(1);
-        }
+        const ctx = makeInitContext();
+        const program = config.init(ctx).pipe(
+            Effect.tap(() => {
+                setPanelFocused('stages');
+                setInitStatus('completed');
+            }),
+            Effect.catchTags({
+                WorkflowExit: (e) => Effect.sync(() => {
+                    console.log('WorkflowExit:', e.reason);
+                    process.exit(0);
+                }),
+                DialogCancelled: (e) => Effect.sync(() => {
+                    setInitStatus('failed');
+                    setInitLogs((logs) => [...logs, { type: 'text' as const, content: `Initialization cancelled: ${e.title ?? 'user cancelled'}` }]);
+                }),
+            }),
+            Effect.catchAllCause((cause) => Effect.sync(() => {
+                setInitStatus('failed');
+                const errorMsg = cause._tag === "Fail"
+                    ? String(cause.error instanceof Error ? cause.error.message : cause.error)
+                    : String(cause);
+                console.error(`Initialization failed: ${errorMsg}`);
+                setInitLogs((logs) => [...logs, { type: 'text' as const, content: `Initialization failed: ${errorMsg}` }]);
+            })),
+        );
+
+        Effect.runPromise(program).catch((e) => { console.error('Init error:', e); });
     }
 
-    // Start init immediately
     runInit();
 
     render(() => {
@@ -360,7 +408,7 @@ export function createWorkflow(config?: WorkflowConfig) {
                     when={initStatus() === 'completed'}
                     fallback={<InitApp logs={initLogs()} />}
                 >
-                    <App stages={stages} variables={variables} runStage={runStage} />
+                    <App stages={stages} variables={variablesStore} runStage={runStage} />
                 </Show>
             </TerminalColorProvider>
         );
@@ -368,6 +416,7 @@ export function createWorkflow(config?: WorkflowConfig) {
         targetFps: 60,
         gatherStats: false,
         exitOnCtrlC: true,
+        consoleMode: "console-overlay",
     });
 
     return {

@@ -4,6 +4,7 @@ import type { ScrollBoxRenderable } from "@opentui/core";
 import type { VariableState } from "./types";
 import { useTerminalColors } from "./theme";
 import { FocusTheme } from "./focus-colors";
+import { Effect } from "effect"
 import { editVariable } from "./variables";
 
 export function VariablesPanel(props: { variables: VariableState[], isFocused: boolean }) {
@@ -12,6 +13,7 @@ export function VariablesPanel(props: { variables: VariableState[], isFocused: b
     let scrollRef: ScrollBoxRenderable | undefined;
 
     useKeyboard((key) => {
+        console.log('[VariablesPanel] key pressed:', JSON.stringify({ name: key.name, ctrl: key.ctrl, shift: key.shift, meta: key.meta, isFocused: props.isFocused }));
         if (!props.isFocused) return;
 
         if (key.name === 'up') {
@@ -23,7 +25,7 @@ export function VariablesPanel(props: { variables: VariableState[], isFocused: b
         if (key.name === 'return' && props.variables.length > 0) {
             const variable = props.variables[selectedIndex()];
             if (variable) {
-                editVariable(variable.name);
+                Effect.runPromise(editVariable(variable.name)).catch((e) => { console.error('Edit variable error:', e); });
             }
         }
     });

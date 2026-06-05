@@ -1,6 +1,6 @@
+import { Effect } from "effect";
 import { createWorkflow, defineVariable } from "./src/lib";
 
-// --- Define shared variables (module-level, accessible in init) ---
 const version = defineVariable("version", {
     type: "string",
     description: "The version of the application to deploy",
@@ -89,234 +89,201 @@ const notifySlack = defineVariable("notifySlack", {
     defaultValue: false,
 });
 
-// --- Create workflow with init stage ---
 const workflow = createWorkflow({
-    init: async ({ log, confirm, spinner, exit }) => {
-        log("Starting initialization...");
+    init: (ctx) => Effect.gen(function* () {
+        ctx.log("Starting initialization...");
         
-        // Access variables defined above
-        const ver = await version.get();
-        log(`Loading configuration for version ${ver}...`);
+        const ver = yield* version.get;
+        ctx.log(`Loading configuration for version ${ver}...`);
         
-        const spin = spinner();
+        const spin = ctx.spinner();
         spin.start("Connecting to services...");
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        yield* Effect.sleep(1500);
         
         spin.message("Validating environment...");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        yield* Effect.sleep(1000);
         
-        const env = await environment.get();
-        log(`Target environment: ${env}`);
+        const env = yield* environment.get;
+        ctx.log(`Target environment: ${env}`);
         
         spin.stop("Services connected.");
         
-        const shouldProceed = await confirm(`Proceed with deployment to ${env}?`);
+        const shouldProceed = yield* ctx.confirm(`Proceed with deployment to ${env}?`);
         if (!shouldProceed) {
-            log("Initialization cancelled by user.");
-            exit();
+            ctx.log("Initialization cancelled by user.");
+            yield* ctx.exit;
         }
         
-        log("Initialization complete. Starting workflow...");
-        await new Promise((resolve) => setTimeout(resolve, 500));
-    }
+        ctx.log("Initialization complete. Starting workflow...");
+        yield* Effect.sleep(500);
+    }),
 });
-
-// --- Define stages that use the shared variables ---
-
-// workflow.addStage({
-//     title: "Stage 1: Initialize",
-//     key: "stage1",
-//     action: async ({ log, confirm, exit, spinner }) => {
-//         log("Initializing...");
-//         await new Promise((resolve) => setTimeout(resolve, 1000));
-
-//         const env = await environment.get();
-//         log(`Target environment: ${env}`);
-
-//         const ver = await version.get();
-//         log(`Deploying version: ${ver}`);
-
-//         const spin = spinner();
-//         spin.start("Processing...");
-//         await new Promise((resolve) => setTimeout(resolve, 2000));
-//         spin.message("Still working...");
-//         await new Promise((resolve) => setTimeout(resolve, 2000));
-//         spin.stop("Done processing.");
-//         await new Promise((resolve) => setTimeout(resolve, 1000));
-
-//         const shouldExit = await confirm("We encountered something unexpected while processing. Do you want to exit?");
-//         if (shouldExit) exit();
-
-//         await new Promise((resolve) => setTimeout(resolve, 1000));
-//         log("Initialization complete.");
-//     }
-// });
 
 workflow.addStage({
     title: "Stage 2: Validate Configuration",
     key: "stage2",
-    action: async ({ log, spinner }) => {
-        log("Starting configuration validation...");
-        const spin = spinner();
+    action: (ctx) => Effect.gen(function* () {
+        ctx.log("Starting configuration validation...");
+        const spin = ctx.spinner();
 
-        const reg = await region.get();
-        const timeoutVal = await timeout.get();
-        const level = await logLevel.get();
-        const cpu = await cpuLimit.get();
-        const mem = await memoryLimit.get();
+        const reg = yield* region.get;
+        const timeoutVal = yield* timeout.get;
+        const level = yield* logLevel.get;
+        const cpu = yield* cpuLimit.get;
+        const mem = yield* memoryLimit.get;
 
         spin.start("Checking region availability...");
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        log(`Region: ${reg} - available`);
+        yield* Effect.sleep(1500);
+        ctx.log(`Region: ${reg} - available`);
 
         spin.message("Validating timeout settings...");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        log(`Timeout: ${timeoutVal}ms - within acceptable range`);
+        yield* Effect.sleep(1000);
+        ctx.log(`Timeout: ${timeoutVal}ms - within acceptable range`);
 
         spin.message("Checking log level...");
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        log(`Log level: ${level}`);
+        yield* Effect.sleep(800);
+        ctx.log(`Log level: ${level}`);
 
         spin.message("Validating resource limits...");
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        log(`CPU limit: ${cpu}`);
-        log(`Memory limit: ${mem}`);
+        yield* Effect.sleep(1200);
+        ctx.log(`CPU limit: ${cpu}`);
+        ctx.log(`Memory limit: ${mem}`);
 
         spin.stop("Configuration validated successfully.");
-        log("All configuration values are valid.");
-    }
+        ctx.log("All configuration values are valid.");
+    }),
 });
 
 workflow.addStage({
     title: "Stage 3: Database Setup",
     key: "stage3",
-    action: async ({ log, progress, spinner }) => {
-        const connStr = await dbConnectionString.get();
-        log(`Connecting to database: ${connStr}`);
+    action: (ctx) => Effect.gen(function* () {
+        const connStr = yield* dbConnectionString.get;
+        ctx.log(`Connecting to database: ${connStr}`);
 
-        const spin = spinner();
+        const spin = ctx.spinner();
         spin.start("Testing database connection...");
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        yield* Effect.sleep(2000);
         spin.stop("Database connection established.");
 
-        log("Running database migrations...");
-        const p = progress(100);
+        ctx.log("Running database migrations...");
+        const p = ctx.progress(100);
 
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        yield* Effect.sleep(500);
         p.advance(10, "Migration 001: Create users table");
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        log("  ✓ Created table 'users'");
+        yield* Effect.sleep(800);
+        ctx.log("  ✓ Created table 'users'");
 
         p.advance(10, "Migration 002: Create sessions table");
-        await new Promise((resolve) => setTimeout(resolve, 600));
-        log("  ✓ Created table 'sessions'");
+        yield* Effect.sleep(600);
+        ctx.log("  ✓ Created table 'sessions'");
 
         p.advance(10, "Migration 003: Create products table");
-        await new Promise((resolve) => setTimeout(resolve, 700));
-        log("  ✓ Created table 'products'");
+        yield* Effect.sleep(700);
+        ctx.log("  ✓ Created table 'products'");
 
         p.advance(10, "Migration 004: Create orders table");
-        await new Promise((resolve) => setTimeout(resolve, 900));
-        log("  ✓ Created table 'orders'");
+        yield* Effect.sleep(900);
+        ctx.log("  ✓ Created table 'orders'");
 
         p.advance(10, "Migration 005: Add indexes");
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        log("  ✓ Added indexes on users.email, orders.created_at");
+        yield* Effect.sleep(1200);
+        ctx.log("  ✓ Added indexes on users.email, orders.created_at");
 
         p.advance(10, "Migration 006: Seed reference data");
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        log("  ✓ Seeded 150 reference records");
+        yield* Effect.sleep(800);
+        ctx.log("  ✓ Seeded 150 reference records");
 
         p.advance(10, "Migration 007: Create audit_log table");
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        log("  ✓ Created table 'audit_log'");
+        yield* Effect.sleep(500);
+        ctx.log("  ✓ Created table 'audit_log'");
 
         p.advance(10, "Migration 008: Add foreign keys");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        log("  ✓ Added foreign key constraints");
+        yield* Effect.sleep(1000);
+        ctx.log("  ✓ Added foreign key constraints");
 
         p.advance(10, "Migration 009: Create views");
-        await new Promise((resolve) => setTimeout(resolve, 600));
-        log("  ✓ Created materialized views");
+        yield* Effect.sleep(600);
+        ctx.log("  ✓ Created materialized views");
 
         p.advance(10, "Migration 010: Final validation");
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        yield* Effect.sleep(500);
         p.complete("All migrations applied");
 
-        log("Database setup complete. 10 migrations applied successfully.");
-    }
+        ctx.log("Database setup complete. 10 migrations applied successfully.");
+    }),
 });
 
 workflow.addStage({
     title: "Stage 4: Build & Compile",
     key: "stage4",
-    action: async ({ log, progress }) => {
-        const ver = await version.get();
-        const debug = await debugMode.get();
-        const flags = await featureFlags.get();
+    action: (ctx) => Effect.gen(function* () {
+        const ver = yield* version.get;
+        const debug = yield* debugMode.get;
+        const flags = yield* featureFlags.get;
 
-        log(`Building version ${ver}...`);
-        log(`Feature flags: ${flags}`);
-        if (debug) log("[DEBUG] Building with source maps enabled");
+        ctx.log(`Building version ${ver}...`);
+        ctx.log(`Feature flags: ${flags}`);
+        if (debug) ctx.log("[DEBUG] Building with source maps enabled");
 
-        const p = progress(100);
+        const p = ctx.progress(100);
 
-        log("Compiling TypeScript...");
+        ctx.log("Compiling TypeScript...");
         p.advance(15, "Compiling TypeScript");
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        log("  ✓ 247 files compiled");
+        yield* Effect.sleep(1500);
+        ctx.log("  ✓ 247 files compiled");
 
-        log("Bundling application...");
+        ctx.log("Bundling application...");
         p.advance(15, "Bundling with esbuild");
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        log("  ✓ Bundle size: 2.4 MB");
+        yield* Effect.sleep(1200);
+        ctx.log("  ✓ Bundle size: 2.4 MB");
 
-        log("Optimizing assets...");
+        ctx.log("Optimizing assets...");
         p.advance(10, "Minifying CSS");
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        log("  ✓ CSS minified: 45 KB → 12 KB");
+        yield* Effect.sleep(800);
+        ctx.log("  ✓ CSS minified: 45 KB → 12 KB");
 
         p.advance(10, "Optimizing images");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        log("  ✓ 32 images optimized");
+        yield* Effect.sleep(1000);
+        ctx.log("  ✓ 32 images optimized");
 
         p.advance(10, "Tree shaking");
-        await new Promise((resolve) => setTimeout(resolve, 600));
-        log("  ✓ Removed 18 unused modules");
+        yield* Effect.sleep(600);
+        ctx.log("  ✓ Removed 18 unused modules");
 
-        log("Running linter...");
+        ctx.log("Running linter...");
         p.advance(10, "ESLint check");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        log("  ✓ No lint errors found");
+        yield* Effect.sleep(1000);
+        ctx.log("  ✓ No lint errors found");
 
-        log("Running type check...");
+        ctx.log("Running type check...");
         p.advance(10, "Type checking");
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        log("  ✓ No type errors");
+        yield* Effect.sleep(1500);
+        ctx.log("  ✓ No type errors");
 
         p.advance(10, "Generating source maps");
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        log("  ✓ Source maps generated");
+        yield* Effect.sleep(500);
+        ctx.log("  ✓ Source maps generated");
 
         p.advance(10, "Writing build artifacts");
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        yield* Effect.sleep(300);
         p.complete("Build complete");
 
-        log(`Build artifacts ready for version ${ver}.`);
-    }
+        ctx.log(`Build artifacts ready for version ${ver}.`);
+    }),
 });
 
 workflow.addStage({
     title: "Stage 5: Run Tests",
     key: "stage5",
-    action: async ({ log, progress }) => {
-        const debug = await debugMode.get();
-        log("Discovering test suites...");
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        log("Found 8 test suites, 124 tests total.");
-        if (debug) log("[DEBUG] Verbose test output enabled");
+    action: (ctx) => Effect.gen(function* () {
+        const debug = yield* debugMode.get;
+        ctx.log("Discovering test suites...");
+        yield* Effect.sleep(500);
+        ctx.log("Found 8 test suites, 124 tests total.");
+        if (debug) ctx.log("[DEBUG] Verbose test output enabled");
 
-        const p = progress(124);
+        const p = ctx.progress(124);
 
         const suites = [
             { name: "auth.test.ts", tests: 18 },
@@ -330,129 +297,129 @@ workflow.addStage({
         ];
 
         for (const suite of suites) {
-            log(`Running ${suite.name}...`);
-            await new Promise((resolve) => setTimeout(resolve, 800 + Math.random() * 1200));
+            ctx.log(`Running ${suite.name}...`);
+            yield* Effect.sleep(800 + Math.random() * 1200);
             p.advance(suite.tests, `${suite.name} (${suite.tests} tests)`);
-            log(`  ✓ ${suite.name}: ${suite.tests} tests passed`);
+            ctx.log(`  ✓ ${suite.name}: ${suite.tests} tests passed`);
         }
 
         p.complete("All tests passed");
-        log("Test run complete: 124/124 passed, 0 failed, 0 skipped.");
-    }
+        ctx.log("Test run complete: 124/124 passed, 0 failed, 0 skipped.");
+    }),
 });
 
 workflow.addStage({
     title: "Stage 6: Docker Build",
     key: "stage6",
-    action: async ({ log, spinner, progress }) => {
-        const ver = await version.get();
-        const reg = await region.get();
-        const cpu = await cpuLimit.get();
-        const mem = await memoryLimit.get();
+    action: (ctx) => Effect.gen(function* () {
+        const ver = yield* version.get;
+        const reg = yield* region.get;
+        const cpu = yield* cpuLimit.get;
+        const mem = yield* memoryLimit.get;
 
-        log(`Building Docker image: app:${ver}`);
-        log(`Target registry region: ${reg}`);
+        ctx.log(`Building Docker image: app:${ver}`);
+        ctx.log(`Target registry region: ${reg}`);
 
-        const spin = spinner();
+        const spin = ctx.spinner();
         spin.start("Pulling base image...");
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        yield* Effect.sleep(2000);
         spin.stop("Base image pulled: node:20-alpine");
 
-        const p = progress(100);
+        const p = ctx.progress(100);
 
-        log("Building image layers...");
+        ctx.log("Building image layers...");
         p.advance(10, "COPY package.json");
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        log("  Layer 1/8: COPY package.json");
+        yield* Effect.sleep(300);
+        ctx.log("  Layer 1/8: COPY package.json");
 
         p.advance(15, "RUN npm install");
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        log("  Layer 2/8: RUN npm install (cached)");
+        yield* Effect.sleep(2000);
+        ctx.log("  Layer 2/8: RUN npm install (cached)");
 
         p.advance(10, "COPY src/");
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        log("  Layer 3/8: COPY src/");
+        yield* Effect.sleep(500);
+        ctx.log("  Layer 3/8: COPY src/");
 
         p.advance(15, "RUN npm run build");
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        log("  Layer 4/8: RUN npm run build");
+        yield* Effect.sleep(1500);
+        ctx.log("  Layer 4/8: RUN npm run build");
 
         p.advance(10, "COPY config/");
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        log("  Layer 5/8: COPY config/");
+        yield* Effect.sleep(300);
+        ctx.log("  Layer 5/8: COPY config/");
 
         p.advance(10, "Setting resource limits");
-        await new Promise((resolve) => setTimeout(resolve, 400));
-        log(`  Layer 6/8: ENV CPU_LIMIT=${cpu} MEMORY_LIMIT=${mem}`);
+        yield* Effect.sleep(400);
+        ctx.log(`  Layer 6/8: ENV CPU_LIMIT=${cpu} MEMORY_LIMIT=${mem}`);
 
         p.advance(10, "HEALTHCHECK");
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        log("  Layer 7/8: HEALTHCHECK --interval=30s");
+        yield* Effect.sleep(300);
+        ctx.log("  Layer 7/8: HEALTHCHECK --interval=30s");
 
         p.advance(10, "ENTRYPOINT");
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        log("  Layer 8/8: ENTRYPOINT [\"node\", \"dist/server.js\"]");
+        yield* Effect.sleep(200);
+        ctx.log("  Layer 8/8: ENTRYPOINT [\"node\", \"dist/server.js\"]");
 
         p.advance(10, "Finalizing image");
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        yield* Effect.sleep(500);
         p.complete("Image built");
 
-        log(`Docker image built: app:${ver} (156 MB)`);
-        log("Image pushed to container registry.");
-    }
+        ctx.log(`Docker image built: app:${ver} (156 MB)`);
+        ctx.log("Image pushed to container registry.");
+    }),
 });
 
 workflow.addStage({
     title: "Stage 7: Deploy to Cluster",
     key: "stage7",
-    action: async ({ log, spinner, progress, confirm }) => {
-        const env = await environment.get();
-        const ver = await version.get();
-        const numReplicas = await replicas.get();
-        const metrics = await enableMetrics.get();
-        const cache = await enableCache.get();
+    action: (ctx) => Effect.gen(function* () {
+        const env = yield* environment.get;
+        const ver = yield* version.get;
+        const numReplicas = yield* replicas.get;
+        const metrics = yield* enableMetrics.get;
+        const cache = yield* enableCache.get;
 
-        log(`Deploying app:${ver} to ${env}...`);
-        log(`Replicas: ${numReplicas}`);
-        log(`Metrics: ${metrics ? "enabled" : "disabled"}`);
-        log(`Caching: ${cache ? "enabled" : "disabled"}`);
+        ctx.log(`Deploying app:${ver} to ${env}...`);
+        ctx.log(`Replicas: ${numReplicas}`);
+        ctx.log(`Metrics: ${metrics ? "enabled" : "disabled"}`);
+        ctx.log(`Caching: ${cache ? "enabled" : "disabled"}`);
 
-        const proceed = await confirm(`Deploy version ${ver} to ${env} with ${numReplicas} replicas?`);
+        const proceed = yield* ctx.confirm(`Deploy version ${ver} to ${env} with ${numReplicas} replicas?`);
         if (!proceed) {
-            log("Deployment cancelled by user.");
+            ctx.log("Deployment cancelled by user.");
             return;
         }
 
-        const spin = spinner();
+        const spin = ctx.spinner();
         spin.start("Applying Kubernetes manifests...");
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        yield* Effect.sleep(2000);
         spin.stop("Manifests applied.");
 
-        const p = progress(numReplicas);
+        const p = ctx.progress(numReplicas);
         for (let i = 1; i <= numReplicas; i++) {
-            log(`Starting replica ${i}/${numReplicas}...`);
-            await new Promise((resolve) => setTimeout(resolve, 1500));
+            ctx.log(`Starting replica ${i}/${numReplicas}...`);
+            yield* Effect.sleep(1500);
             p.advance(1, `Replica ${i} ready`);
-            log(`  ✓ Replica ${i} is healthy`);
+            ctx.log(`  ✓ Replica ${i} is healthy`);
         }
         p.complete("All replicas running");
 
-        log("Running post-deployment health checks...");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        log("  ✓ /health returns 200 OK");
-        log("  ✓ /ready returns 200 OK");
-        if (metrics) log("  ✓ /metrics endpoint responding");
+        ctx.log("Running post-deployment health checks...");
+        yield* Effect.sleep(1000);
+        ctx.log("  ✓ /health returns 200 OK");
+        ctx.log("  ✓ /ready returns 200 OK");
+        if (metrics) ctx.log("  ✓ /metrics endpoint responding");
 
-        log(`Deployment to ${env} complete.`);
-    }
+        ctx.log(`Deployment to ${env} complete.`);
+    }),
 });
 
 workflow.addStage({
     title: "Stage 8: Smoke Tests",
     key: "stage8",
-    action: async ({ log, progress }) => {
-        const env = await environment.get();
-        log(`Running smoke tests against ${env}...`);
+    action: (ctx) => Effect.gen(function* () {
+        const env = yield* environment.get;
+        ctx.log(`Running smoke tests against ${env}...`);
 
         const tests = [
             "GET /api/health → 200",
@@ -467,23 +434,23 @@ workflow.addStage({
             "POST /api/v1/webhooks/test → 202",
         ];
 
-        const p = progress(tests.length);
+        const p = ctx.progress(tests.length);
         for (const test of tests) {
-            await new Promise((resolve) => setTimeout(resolve, 600 + Math.random() * 800));
+            yield* Effect.sleep(600 + Math.random() * 800);
             p.advance(1, test);
-            log(`  ✓ ${test}`);
+            ctx.log(`  ✓ ${test}`);
         }
         p.complete("All smoke tests passed");
 
-        log(`Smoke tests complete: ${tests.length}/${tests.length} passed.`);
-    }
+        ctx.log(`Smoke tests complete: ${tests.length}/${tests.length} passed.`);
+    }),
 });
 
 workflow.addStage({
     title: "Stage 8: Select Features",
-    key: "stage8",
-    action: async ({ log, checkboxGroup }) => {
-        const features = await checkboxGroup({
+    key: "stage8_features",
+    action: (ctx) => Effect.gen(function* () {
+        const features = yield* ctx.checkboxGroup({
             options: [
                 { id: 'auth', name: 'Authentication', category: 'Security' },
                 { id: 'logging', name: 'Audit Logging', category: 'Monitoring' },
@@ -495,49 +462,49 @@ workflow.addStage({
             title: 'Select Features to Enable'
         });
 
-        log(`Selected ${features.length} features:`);
+        ctx.log(`Selected ${features.length} features:`);
         for (const feature of features) {
-            log(`  ✓ ${feature.name} (${feature.category})`);
+            ctx.log(`  ✓ ${feature.name} (${feature.category})`);
         }
-    }
+    }),
 });
 
 workflow.addStage({
     title: "Stage 9: Notify & Cleanup",
     key: "stage9",
-    action: async ({ log, spinner }) => {
-        const env = await environment.get();
-        const ver = await version.get();
-        const slack = await notifySlack.get();
-        const retries = await maxRetries.get();
+    action: (ctx) => Effect.gen(function* () {
+        const env = yield* environment.get;
+        const ver = yield* version.get;
+        const slack = yield* notifySlack.get;
+        const retries = yield* maxRetries.get;
 
-        const spin = spinner();
+        const spin = ctx.spinner();
 
         if (slack) {
             spin.start("Sending Slack notification...");
-            await new Promise((resolve) => setTimeout(resolve, 1500));
+            yield* Effect.sleep(1500);
             spin.stop("Slack notification sent.");
-            log(`Notified #deployments: "${ver} deployed to ${env}"`);
+            ctx.log(`Notified #deployments: "${ver} deployed to ${env}"`);
         } else {
-            log("Slack notifications disabled, skipping.");
+            ctx.log("Slack notifications disabled, skipping.");
         }
 
         spin.start("Cleaning up temporary files...");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        log("  ✓ Removed build artifacts from /tmp");
+        yield* Effect.sleep(1000);
+        ctx.log("  ✓ Removed build artifacts from /tmp");
         spin.message("Clearing Docker build cache...");
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        log("  ✓ Docker build cache cleared");
+        yield* Effect.sleep(1200);
+        ctx.log("  ✓ Docker build cache cleared");
         spin.message("Archiving deployment logs...");
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        log("  ✓ Logs archived to S3");
+        yield* Effect.sleep(800);
+        ctx.log("  ✓ Logs archived to S3");
         spin.stop("Cleanup complete.");
 
-        log(`Max retries configured: ${retries}`);
-        log("---");
-        log(`Deployment pipeline complete.`);
-        log(`  Version: ${ver}`);
-        log(`  Environment: ${env}`);
-        log(`  Status: SUCCESS`);
-    }
+        ctx.log(`Max retries configured: ${retries}`);
+        ctx.log("---");
+        ctx.log(`Deployment pipeline complete.`);
+        ctx.log(`  Version: ${ver}`);
+        ctx.log(`  Environment: ${env}`);
+        ctx.log(`  Status: SUCCESS`);
+    }),
 });

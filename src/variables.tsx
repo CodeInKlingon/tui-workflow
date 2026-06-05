@@ -1,25 +1,22 @@
 import { createStore } from "solid-js/store";
+import { Effect, Deferred, Either } from "effect";
 import type { VariableType, VariableDefinition, VariableState, VariableHandle, VariableValueFor } from "./types";
-import { dialogService } from "./dialog";
+import { dialogEffect } from "./dialog";
 import { panelFocused, setPanelFocused } from "./focus";
 import { Prompt, Confirm } from "./confirm";
+import { CheckboxGroup } from "./checkbox-group";
+import { DialogCancelled, VariableRequired } from "./errors";
 
-// --- Reactive store for all variables ---
 const [variables, setVariables] = createStore<VariableState[]>([]);
 
-// --- Pending resolution promises (for dedup) ---
-const pendingResolutions = new Map<string, Promise<any>>();
+const pendingResolutions = new Map<string, Deferred.Deferred<any, any>>();
 
 export { variables };
 
-/**
- * Register a new variable definition and return a handle for interacting with it.
- */
 export function defineVariable<T extends VariableType>(
     name: string,
     options: Omit<VariableDefinition<T>, 'name'>
 ): VariableHandle<T> {
-    // Prevent duplicate registrations
     const existingIndex = variables.findIndex(v => v.name === name);
     if (existingIndex !== -1) {
         throw new Error(`Variable "${name}" is already defined.`);
@@ -38,18 +35,8 @@ export function defineVariable<T extends VariableType>(
     const handle: VariableHandle<T> = {
         name,
         type: options.type,
-        get: () => resolveVariable<T>(name),
-        prompt: async () => {
-            const state = variables.find(v => v.name === name);
-            if (!state) throw new Error(`Variable "${name}" is not defined.`);
-            const result = await promptForVariable<T>(state as VariableState<T>);
-            const idx = variables.findIndex(v => v.name === name);
-            if (idx !== -1) {
-                setVariables(idx, 'value', result as any);
-                setVariables(idx, 'isSet', true);
-            }
-            return result;
-        },
+        get: resolveVariable<T>(name),
+        prompt: promptVariableDirect<T>(name),
         peek: () => {
             const state = variables.find(v => v.name === name);
             return state?.value as VariableValueFor<T> | undefined;
@@ -65,127 +52,131 @@ export function defineVariable<T extends VariableType>(
     return handle;
 }
 
-/**
- * Resolve a variable's value. If already set, returns immediately.
- * If not set, prompts the user. Deduplicates concurrent prompts for the same variable.
- */
-async function resolveVariable<T extends VariableType>(name: string): Promise<VariableValueFor<T>> {
+function resolveVariable<T extends VariableType>(name: string): Effect.Effect<VariableValueFor<T>, VariableRequired> {
     const state = variables.find(v => v.name === name);
-    if (!state) {
-        throw new Error(`Variable "${name}" is not defined.`);
-    }
+    if (!state) return Effect.fail(new VariableRequired({ name }));
+    if (state.isSet) return Effect.succeed(state.value as VariableValueFor<T>);
 
-    // Already set — return immediately
-    if (state.isSet) {
-        return state.value as VariableValueFor<T>;
-    }
-
-    // Dedup: if another caller is already prompting for this variable, wait on the same promise
-    const pending = pendingResolutions.get(name);
-    if (pending) {
-        return pending as Promise<VariableValueFor<T>>;
-    }
-
-    // Create the prompt and store the pending promise
-    const promise = promptForVariable<T>(state as VariableState<T>);
-    pendingResolutions.set(name, promise);
-
-    try {
-        const result = await promise;
-        // Update the store
-        const idx = variables.findIndex(v => v.name === name);
-        if (idx !== -1) {
-            setVariables(idx, 'value', result as any);
-            setVariables(idx, 'isSet', true);
+    return Effect.gen(function* () {
+        const existing = pendingResolutions.get(name);
+        if (existing) {
+            return yield* Deferred.await(existing as Deferred.Deferred<VariableValueFor<T>, VariableRequired>);
         }
-        return result;
-    } finally {
+
+        const deferred = yield* Deferred.make<VariableValueFor<T>, VariableRequired>();
+        pendingResolutions.set(name, deferred);
+
+        const either = yield* Effect.either(
+            promptForVariable<T>(state as VariableState<T>).pipe(
+                Effect.tap((value) => {
+                    const idx = variables.findIndex(v => v.name === name);
+                    if (idx !== -1) {
+                        setVariables(idx, 'value', value as any);
+                        setVariables(idx, 'isSet', true);
+                    }
+                }),
+                Effect.catchTag("DialogCancelled", () => {
+                    if (state.defaultValue !== undefined) {
+                        const value = state.defaultValue as VariableValueFor<T>;
+                        const idx = variables.findIndex(v => v.name === name);
+                        if (idx !== -1) {
+                            setVariables(idx, 'value', value as any);
+                            setVariables(idx, 'isSet', true);
+                        }
+                        return Effect.succeed(value);
+                    }
+                    return Effect.fail(new VariableRequired({ name }));
+                }),
+            )
+        );
+
         pendingResolutions.delete(name);
-    }
+
+        if (Either.isRight(either)) {
+            yield* Deferred.succeed(deferred, either.right);
+            return either.right;
+        } else {
+            yield* Deferred.fail(deferred, either.left);
+            return yield* Effect.fail(either.left);
+        }
+    });
 }
 
-/**
- * Open the appropriate dialog to prompt the user for a variable value.
- */
-async function promptForVariable<T extends VariableType>(state: VariableState<T>): Promise<VariableValueFor<T>> {
+function promptVariableDirect<T extends VariableType>(name: string): Effect.Effect<VariableValueFor<T>, DialogCancelled> {
+    const state = variables.find(v => v.name === name);
+    if (!state) return Effect.fail(new DialogCancelled({ title: name }));
+
+    return promptForVariable<T>(state as VariableState<T>).pipe(
+        Effect.tap((value) => {
+            const idx = variables.findIndex(v => v.name === name);
+            if (idx !== -1) {
+                setVariables(idx, 'value', value as any);
+                setVariables(idx, 'isSet', true);
+            }
+        }),
+    );
+}
+
+function promptForVariable<T extends VariableType>(state: VariableState<T>): Effect.Effect<VariableValueFor<T>, DialogCancelled> {
     const returnFocus = panelFocused();
 
     if (state.type === 'boolean') {
         setPanelFocused('confirm');
-        try {
-            const result = await dialogService.add<boolean>((resolve, reject) => (
-                <Confirm
-                    message={`${state.description}\n(Default: ${state.defaultValue !== undefined ? String(state.defaultValue) : 'none'})`}
-                    title={`Variable: ${state.name}`}
-                    resolve={resolve}
-                    reject={reject}
-                />
-            ));
-            setPanelFocused(returnFocus);
-            return result as VariableValueFor<T>;
-        } catch {
-            // User cancelled — fall back to default or re-throw
-            setPanelFocused(returnFocus);
-            if (state.defaultValue !== undefined) {
-                return state.defaultValue as VariableValueFor<T>;
-            }
-            throw new Error(`Variable "${state.name}" is required but was cancelled.`);
-        }
-    }
-
-    // String or Number — use Prompt dialog
-    setPanelFocused('prompt');
-    try {
-        const result = await dialogService.add<string>((resolve, reject) => (
-            <Prompt
-                message={state.description}
-                title={`Variable: ${state.name} (${state.type})`}
-                defaultValue={state.defaultValue !== undefined ? String(state.defaultValue) : undefined}
+        return dialogEffect.add<boolean>((resolve, reject) => (
+            <Confirm
+                message={`${state.description}\n(Default: ${state.defaultValue !== undefined ? String(state.defaultValue) : 'none'})`}
+                title={`Variable: ${state.name}`}
                 resolve={resolve}
                 reject={reject}
             />
-        ));
-        setPanelFocused(returnFocus);
-
-        if (state.type === 'number') {
-            const num = Number(result);
-            if (isNaN(num)) {
-                throw new Error(`Invalid number entered for variable "${state.name}": ${result}`);
-            }
-            return num as VariableValueFor<T>;
-        }
-
-        return result as VariableValueFor<T>;
-    } catch {
-        // User cancelled — fall back to default or re-throw
-        setPanelFocused(returnFocus);
-        if (state.defaultValue !== undefined) {
-            return state.defaultValue as VariableValueFor<T>;
-        }
-        throw new Error(`Variable "${state.name}" is required but was cancelled.`);
+        )).pipe(
+            Effect.ensuring(Effect.sync(() => setPanelFocused(returnFocus))),
+            Effect.map((result) => result as VariableValueFor<T>),
+        );
     }
+
+    setPanelFocused('prompt');
+    return dialogEffect.add<string>((resolve, reject) => (
+        <Prompt
+            message={state.description}
+            title={`Variable: ${state.name} (${state.type})`}
+            defaultValue={state.defaultValue !== undefined ? String(state.defaultValue) : undefined}
+            resolve={resolve}
+            reject={reject}
+        />
+    )).pipe(
+        Effect.ensuring(Effect.sync(() => setPanelFocused(returnFocus))),
+        Effect.map((result) => {
+            if (state.type === 'number') {
+                const num = Number(result);
+                if (isNaN(num)) {
+                    throw new Error(`Invalid number entered for variable "${state.name}": ${result}`);
+                }
+                return num as VariableValueFor<T>;
+            }
+            return result as VariableValueFor<T>;
+        }),
+    );
 }
 
-/**
- * Prompt the user to edit an existing variable (from the variables panel).
- * Re-uses the same prompt flow as initial resolution.
- */
-export async function editVariable(name: string): Promise<void> {
-    const state = variables.find(v => v.name === name);
-    if (!state) return;
+export function editVariable(name: string): Effect.Effect<void, never> {
+    return Effect.gen(function* () {
+        const state = variables.find(v => v.name === name);
+        if (!state) return;
 
-    // Temporarily mark as unset so the prompt flow works
-    const idx = variables.findIndex(v => v.name === name);
-    const previousValue = state.value;
-    const previousIsSet = state.isSet;
+        const idx = variables.findIndex(v => v.name === name);
+        const previousValue = state.value;
+        const previousIsSet = state.isSet;
 
-    try {
-        const result = await promptForVariable(state);
-        setVariables(idx, 'value', result as any);
+        const either = yield* Effect.either(promptForVariable(state));
+
+        if (Either.isLeft(either)) {
+            setVariables(idx, 'value', previousValue as any);
+            setVariables(idx, 'isSet', previousIsSet);
+            return;
+        }
+
+        setVariables(idx, 'value', either.right as any);
         setVariables(idx, 'isSet', true);
-    } catch {
-        // Restore previous state on cancel
-        setVariables(idx, 'value', previousValue as any);
-        setVariables(idx, 'isSet', previousIsSet);
-    }
+    });
 }
