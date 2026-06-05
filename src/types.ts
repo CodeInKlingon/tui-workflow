@@ -56,6 +56,11 @@ export interface Stage {
         log: (message: string) => void,
         confirm: (message: string) => Promise<boolean>,
         prompt: (message: string) => Promise<string>,
+        checkboxGroup: <T>(options: {
+            options: T[];
+            label: (option: T) => string;
+            title?: string;
+        }) => Promise<T[]>;
         spinner: () => any,
         progress: (total: number) => ProgressHandle,
         exit: () => void,
@@ -66,4 +71,28 @@ export interface StageDetail extends Stage {
     status: 'pending' | 'in-progress' | 'completed' | 'failed';
     error?: string;
     log: LogEntry[];
+}
+
+// --- Init Types ---
+
+export interface InitContext {
+    log: (message: string) => void;
+    confirm: (message: string) => Promise<boolean>;
+    prompt: (message: string) => Promise<string>;
+    checkboxGroup: <T>(options: {
+        options: T[];
+        label: (option: T) => string;
+        title?: string;
+    }) => Promise<T[]>;
+    spinner: () => {
+        start: (msg: string) => void;
+        message: (msg: string) => void;
+        stop: (msg: string) => void;
+    };
+    progress: (total: number) => ProgressHandle;
+    exit: () => void;
+}
+
+export interface WorkflowConfig {
+    init?: (ctx: InitContext) => Promise<void>;
 }

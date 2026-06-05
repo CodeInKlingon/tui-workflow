@@ -1,126 +1,156 @@
-import { createWorkflow } from "./src/lib";
+import { createWorkflow, defineVariable } from "./src/lib";
 
-const workflow = createWorkflow();
-
-// --- Define shared variables ---
-const version = workflow.defineVariable("version", {
+// --- Define shared variables (module-level, accessible in init) ---
+const version = defineVariable("version", {
     type: "string",
     description: "The version of the application to deploy",
     defaultValue: "1.0.0",
 });
 
-const environment = workflow.defineVariable("environment", {
+const environment = defineVariable("environment", {
     type: "string",
     description: "Target deployment environment",
 });
 
-const debugMode = workflow.defineVariable("debug", {
+const debugMode = defineVariable("debug", {
     type: "boolean",
     description: "Enable debug mode for verbose logging",
     defaultValue: false,
 });
 
-const replicas = workflow.defineVariable("replicas", {
+const replicas = defineVariable("replicas", {
     type: "number",
     description: "Number of replicas to deploy",
     defaultValue: 3,
 });
 
-const region = workflow.defineVariable("region", {
+const region = defineVariable("region", {
     type: "string",
     description: "Cloud region for deployment",
     defaultValue: "us-east-1",
 });
 
-const timeout = workflow.defineVariable("timeout", {
+const timeout = defineVariable("timeout", {
     type: "number",
     description: "Request timeout in milliseconds",
     defaultValue: 30000,
 });
 
-const enableCache = workflow.defineVariable("enableCache", {
+const enableCache = defineVariable("enableCache", {
     type: "boolean",
     description: "Enable response caching layer",
     defaultValue: true,
 });
 
-const logLevel = workflow.defineVariable("logLevel", {
+const logLevel = defineVariable("logLevel", {
     type: "string",
     description: "Application log level (trace, debug, info, warn, error)",
     defaultValue: "info",
 });
 
-const maxRetries = workflow.defineVariable("maxRetries", {
+const maxRetries = defineVariable("maxRetries", {
     type: "number",
     description: "Maximum number of retry attempts for failed requests",
     defaultValue: 3,
 });
 
-const dbConnectionString = workflow.defineVariable("dbConnectionString", {
+const dbConnectionString = defineVariable("dbConnectionString", {
     type: "string",
     description: "Database connection string",
 });
 
-const enableMetrics = workflow.defineVariable("enableMetrics", {
+const enableMetrics = defineVariable("enableMetrics", {
     type: "boolean",
     description: "Enable Prometheus metrics endpoint",
     defaultValue: true,
 });
 
-const cpuLimit = workflow.defineVariable("cpuLimit", {
+const cpuLimit = defineVariable("cpuLimit", {
     type: "string",
     description: "CPU resource limit per pod",
     defaultValue: "500m",
 });
 
-const memoryLimit = workflow.defineVariable("memoryLimit", {
+const memoryLimit = defineVariable("memoryLimit", {
     type: "string",
     description: "Memory resource limit per pod",
     defaultValue: "512Mi",
 });
 
-const featureFlags = workflow.defineVariable("featureFlags", {
+const featureFlags = defineVariable("featureFlags", {
     type: "string",
     description: "Comma-separated list of feature flags to enable",
     defaultValue: "new-ui,dark-mode",
 });
 
-const notifySlack = workflow.defineVariable("notifySlack", {
+const notifySlack = defineVariable("notifySlack", {
     type: "boolean",
     description: "Send deployment notifications to Slack",
     defaultValue: false,
 });
 
-// --- Define stages that use the shared variables ---
-
-workflow.addStage({
-    title: "Stage 1: Initialize",
-    key: "stage1",
-    action: async ({ log, confirm, exit, spinner }) => {
-        log("Initializing...");
+// --- Create workflow with init stage ---
+const workflow = createWorkflow({
+    init: async ({ log, confirm, spinner, exit }) => {
+        log("Starting initialization...");
+        
+        // Access variables defined above
+        const ver = await version.get();
+        log(`Loading configuration for version ${ver}...`);
+        
+        const spin = spinner();
+        spin.start("Connecting to services...");
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        
+        spin.message("Validating environment...");
         await new Promise((resolve) => setTimeout(resolve, 1000));
-
+        
         const env = await environment.get();
         log(`Target environment: ${env}`);
-
-        const ver = await version.get();
-        log(`Deploying version: ${ver}`);
-
-        const spin = spinner();
-        spin.start("Processing...");
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        spin.message("Still working...");
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        spin.stop("Done processing.");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        const shouldExit = await confirm("We encountered something unexpected while processing. Do you want to exit?");
-        if (shouldExit) exit();
-
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        log("Initialization complete.");
+        
+        spin.stop("Services connected.");
+        
+        const shouldProceed = await confirm(`Proceed with deployment to ${env}?`);
+        if (!shouldProceed) {
+            log("Initialization cancelled by user.");
+            exit();
+        }
+        
+        log("Initialization complete. Starting workflow...");
+        await new Promise((resolve) => setTimeout(resolve, 500));
     }
 });
+
+// --- Define stages that use the shared variables ---
+
+// workflow.addStage({
+//     title: "Stage 1: Initialize",
+//     key: "stage1",
+//     action: async ({ log, confirm, exit, spinner }) => {
+//         log("Initializing...");
+//         await new Promise((resolve) => setTimeout(resolve, 1000));
+
+//         const env = await environment.get();
+//         log(`Target environment: ${env}`);
+
+//         const ver = await version.get();
+//         log(`Deploying version: ${ver}`);
+
+//         const spin = spinner();
+//         spin.start("Processing...");
+//         await new Promise((resolve) => setTimeout(resolve, 2000));
+//         spin.message("Still working...");
+//         await new Promise((resolve) => setTimeout(resolve, 2000));
+//         spin.stop("Done processing.");
+//         await new Promise((resolve) => setTimeout(resolve, 1000));
+
+//         const shouldExit = await confirm("We encountered something unexpected while processing. Do you want to exit?");
+//         if (shouldExit) exit();
+
+//         await new Promise((resolve) => setTimeout(resolve, 1000));
+//         log("Initialization complete.");
+//     }
+// });
 
 workflow.addStage({
     title: "Stage 2: Validate Configuration",
@@ -446,6 +476,29 @@ workflow.addStage({
         p.complete("All smoke tests passed");
 
         log(`Smoke tests complete: ${tests.length}/${tests.length} passed.`);
+    }
+});
+
+workflow.addStage({
+    title: "Stage 8: Select Features",
+    key: "stage8",
+    action: async ({ log, checkboxGroup }) => {
+        const features = await checkboxGroup({
+            options: [
+                { id: 'auth', name: 'Authentication', category: 'Security' },
+                { id: 'logging', name: 'Audit Logging', category: 'Monitoring' },
+                { id: 'cache', name: 'Redis Cache', category: 'Performance' },
+                { id: 'ssl', name: 'SSL Termination', category: 'Security' },
+                { id: 'metrics', name: 'Prometheus Metrics', category: 'Monitoring' },
+            ],
+            label: (opt) => `${opt.name} (${opt.category})`,
+            title: 'Select Features to Enable'
+        });
+
+        log(`Selected ${features.length} features:`);
+        for (const feature of features) {
+            log(`  ✓ ${feature.name} (${feature.category})`);
+        }
     }
 });
 
